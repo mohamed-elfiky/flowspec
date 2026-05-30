@@ -1,0 +1,18 @@
+Machine: Transaction
+
+State:
+  txState is one of:
+    OPEN
+    COMMITTED
+    ABORTED
+
+Initially:
+  txState = OPEN
+
+Move: Commit
+  if txState = OPEN
+  then txState becomes COMMITTED
+
+Move: Abort
+  if txState = OPEN
+  then txState becomes ABORTED

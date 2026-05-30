@@ -1,0 +1,37 @@
+Machine: Payment
+
+State:
+  status is one of:
+    PENDING
+    POSTED
+    REJECTED
+  amount is one of {10}
+  sourceBalance is one of {90, 100}
+  destinationBalance is one of {0, 10}
+
+Initially:
+  status = PENDING
+  amount = 10
+  sourceBalance = 100
+  destinationBalance = 0
+
+Move: Post
+  if status = PENDING
+  if sourceBalance >= amount
+  then status becomes POSTED
+  then sourceBalance becomes sourceBalance - amount
+  then destinationBalance becomes destinationBalance + amount
+
+Move: RejectInsufficientFunds
+  if status = PENDING
+  if sourceBalance < amount
+  then status becomes REJECTED
+  same amount
+  same sourceBalance
+  same destinationBalance
+
+Bad state: Overdraft
+  sourceBalance < 0
+
+Always: TerminalStatusKnown
+  status is one of {PENDING, POSTED, REJECTED}

@@ -1,0 +1,139 @@
+{
+  "name": "flowspec-vscode",
+  "displayName": "FlowSpec",
+  "description": "Language support and model-checking commands for FlowSpec business workflow specs.",
+  "version": "0.0.1",
+  "publisher": "flowspec",
+  "private": true,
+  "scripts": {
+    "check": "node --check src/extension.js"
+  },
+  "engines": {
+    "vscode": "^1.92.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Other"
+  ],
+  "activationEvents": [
+    "onLanguage:flowspec",
+    "onCommand:flowspec.validateCurrent",
+    "onCommand:flowspec.compileCurrent",
+    "onCommand:flowspec.previewTla",
+    "onCommand:flowspec.showParseTree",
+    "onCommand:flowspec.runSuite",
+    "onCommand:flowspec.runTlcCurrent",
+    "onCommand:flowspec.runTlcSuite"
+  ],
+  "main": "./src/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "flowspec",
+        "aliases": [
+          "FlowSpec",
+          "flowspec"
+        ],
+        "extensions": [
+          ".fspec"
+        ],
+        "configuration": "./language/configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "flowspec",
+        "scopeName": "source.flowspec",
+        "path": "./syntaxes/flowspec.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "flowspec.validateCurrent",
+        "title": "FlowSpec: Validate Current File"
+      },
+      {
+        "command": "flowspec.compileCurrent",
+        "title": "FlowSpec: Compile Current File"
+      },
+      {
+        "command": "flowspec.previewTla",
+        "title": "FlowSpec: Preview Generated TLA+"
+      },
+      {
+        "command": "flowspec.showParseTree",
+        "title": "FlowSpec: Show Parse Tree"
+      },
+      {
+        "command": "flowspec.runSuite",
+        "title": "FlowSpec: Run Compile Suite"
+      },
+      {
+        "command": "flowspec.runTlcCurrent",
+        "title": "FlowSpec: Run TLC Current File"
+      },
+      {
+        "command": "flowspec.runTlcSuite",
+        "title": "FlowSpec: Run TLC Suite"
+      }
+    ],
+    "configuration": {
+      "title": "FlowSpec",
+      "properties": {
+        "flowspec.projectRoot": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the FlowSpec project root that contains parse_tlasm.py and run_suite.py. Empty means auto-detect from the extension workspace."
+        },
+        "flowspec.pythonPath": {
+          "type": "string",
+          "default": "",
+          "description": "Python executable used to run FlowSpec tools. Empty means use .venv/bin/python when present, otherwise python3."
+        },
+        "flowspec.tlcBackend": {
+          "type": "string",
+          "enum": [
+            "docker",
+            "host"
+          ],
+          "default": "docker",
+          "description": "TLC runtime backend used by extension commands."
+        },
+        "flowspec.tlcImage": {
+          "type": "string",
+          "default": "ghcr.io/mohamed-elfiky/flowspec-tlc:0.0.1",
+          "description": "Docker image used when flowspec.tlcBackend is docker."
+        },
+        "flowspec.tlcJar": {
+          "type": "string",
+          "default": "",
+          "description": "Path to tla2tools.jar when flowspec.tlcBackend is host."
+        },
+        "flowspec.validateOnChange": {
+          "type": "boolean",
+          "default": true,
+          "description": "Validate .fspec files while editing."
+        }
+      }
+    },
+    "menus": {
+      "editor/context": [
+        {
+          "command": "flowspec.validateCurrent",
+          "when": "resourceExtname == .fspec",
+          "group": "navigation@1"
+        },
+        {
+          "command": "flowspec.previewTla",
+          "when": "resourceExtname == .fspec",
+          "group": "navigation@2"
+        },
+        {
+          "command": "flowspec.runTlcCurrent",
+          "when": "resourceExtname == .fspec",
+          "group": "navigation@3"
+        }
+      ]
+    }
+  }
+}

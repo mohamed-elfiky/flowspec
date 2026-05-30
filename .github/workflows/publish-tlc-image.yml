@@ -1,0 +1,59 @@
+name: Publish TLC Docker Image
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE_NAME: ghcr.io/mohamed-elfiky/flowspec-tlc
+  TLA2TOOLS_VERSION: "1.8.0"
+  TLA2TOOLS_URL: "https://github.com/tlaplus/tlaplus/releases/download/v1.8.0/tla2tools.jar"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Read image version
+        id: version
+        run: echo "version=$(cat docker/tlc/VERSION)" >> "$GITHUB_OUTPUT"
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ steps.version.outputs.version }}
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+
+      - name: Build and publish image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/tlc/Dockerfile
+          push: true
+          build-args: |
+            TLA2TOOLS_VERSION=${{ env.TLA2TOOLS_VERSION }}
+            TLA2TOOLS_URL=${{ env.TLA2TOOLS_URL }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

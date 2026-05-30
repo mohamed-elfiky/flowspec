@@ -1,0 +1,7 @@
+include grammar.lark
+include README.md
+include flowspec/grammar.lark
+recursive-include docs *.md
+recursive-include examples *.fspec *.cfg *.md
+recursive-include docker *.md Dockerfile
+recursive-exclude extension/node_modules *

@@ -1,0 +1,31 @@
+Machine: Account
+
+Given:
+  Account
+
+State:
+  status is one of:
+    OPEN
+    CLOSED
+  balance per Account is one of {0}
+
+Initially:
+  status = OPEN
+  balance = map account in Account -> 0
+
+Move: Close
+  if status = OPEN
+  then status becomes CLOSED
+  same balance
+
+Bad state: NegativeBalance
+  some account in Account has balance[account] < 0
+
+Always: StatusIsKnown
+  status is one of {OPEN, CLOSED}
+
+Eventually: ClosedEventually
+  status = CLOSED
+
+Fairness:
+  weak Close

@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flowspec"
+version = "0.0.1"
+description = "State-machine-first DSL for business workflow specs that compile to TLA+."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+  { name = "FlowSpec contributors" }
+]
+dependencies = [
+  "lark==1.3.1"
+]
+keywords = ["tla", "tla+", "model-checking", "dsl", "workflow"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Topic :: Software Development :: Quality Assurance"
+]
+
+[project.scripts]
+flowspec = "flowspec.cli:main"
+flowspec-suite = "flowspec.suite:main"
+
+[tool.setuptools]
+py-modules = ["parse_tlasm", "run_suite"]
+packages = ["flowspec"]
+include-package-data = true
+
+[tool.setuptools.package-data]
+flowspec = ["grammar.lark"]

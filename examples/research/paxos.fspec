@@ -1,0 +1,147 @@
+Machine: PaxosCommit
+
+Given:
+  RM
+  Acceptor
+  Majority
+  Ballot
+  CanChoose
+  ChosenValue
+  DecidedPrepared
+  DecidedAborted
+
+Assume:
+  Ballot is a subset of Nat
+  0 is in Ballot
+  Majority is a subset of subset Acceptor
+  every M1 in Majority, M2 in Majority has M1 intersects M2
+
+State:
+  rmState is a table from RM to one of:
+    working
+    prepared
+    committed
+    aborted
+
+  aState is a table from RM to a table from Acceptor to record:
+    mbal in Ballot
+    bal in Ballot plus {-1}
+    val in {prepared, aborted, NONE}
+
+  msgs is a set of Messages
+
+Messages:
+  phase1a has:
+    type = phase1a
+    ins in RM
+    bal in Ballot except {0}
+
+  phase1b has:
+    type = phase1b
+    ins in RM
+    mbal in Ballot
+    bal in Ballot plus {-1}
+    val in {prepared, aborted, NONE}
+    acc in Acceptor
+
+  phase2a has:
+    type = phase2a
+    ins in RM
+    bal in Ballot
+    val in {prepared, aborted}
+
+  phase2b has:
+    type = phase2b
+    acc in Acceptor
+    ins in RM
+    bal in Ballot
+    val in {prepared, aborted}
+
+  Commit has:
+    type = Commit
+
+  Abort has:
+    type = Abort
+
+Initially:
+  every r in RM has rmState[r] = working
+  every r in RM, ac in Acceptor has aState[r][ac].mbal = 0
+  every r in RM, ac in Acceptor has aState[r][ac].bal = -1
+  every r in RM, ac in Acceptor has aState[r][ac].val = none
+  msgs = {}
+
+Move: RMPrepare
+  for some r in RM
+  if rmState[r] = working
+  then rmState[r] becomes prepared
+  then msgs gains phase2a(ins = r, bal = 0, val = prepared)
+  same aState
+
+Move: RMChooseToAbort
+  for some r in RM
+  if rmState[r] = working
+  then rmState[r] becomes aborted
+  then msgs gains phase2a(ins = r, bal = 0, val = aborted)
+  same aState
+
+Move: RMRcvCommitMsg
+  for some r in RM
+  if Commit is in msgs
+  then rmState[r] becomes committed
+  same aState
+  same msgs
+
+Move: RMRcvAbortMsg
+  for some r in RM
+  if Abort is in msgs
+  then rmState[r] becomes aborted
+  same aState
+  same msgs
+
+Move: Phase1a
+  for some bal in Ballot except {0}
+  for some r in RM
+  then msgs gains phase1a(ins = r, bal = bal)
+  same rmState
+  same aState
+
+Move: Phase1b
+  for some acc in Acceptor
+  for some m in msgs
+  if m.type = phase1a
+  if aState[m.ins][acc].mbal < m.bal
+  then aState[m.ins][acc].mbal becomes m.bal
+  then msgs gains phase1b(ins = m.ins, mbal = m.bal, bal = aState[m.ins][acc].bal, val = aState[m.ins][acc].val, acc = acc)
+  same rmState
+
+Move: Phase2a
+  for some bal in Ballot except {0}
+  for some r in RM
+  if no m in msgs has m.type = phase2a and m.ins = r and m.bal = bal
+  if CanChoose(r, bal, msgs)
+  then msgs gains phase2a(ins = r, bal = bal, val = ChosenValue(r, bal, msgs))
+  same rmState
+  same aState
+
+Move: Phase2b
+  for some acc in Acceptor
+  for some m in msgs
+  if m.type = phase2a
+  if aState[m.ins][acc].mbal <= m.bal
+  then aState[m.ins][acc].mbal becomes m.bal
+  then aState[m.ins][acc].bal becomes m.bal
+  then aState[m.ins][acc].val becomes m.val
+  then msgs gains phase2b(ins = m.ins, bal = m.bal, val = m.val, acc = acc)
+  same rmState
+
+Move: DecideCommit
+  if every r in RM has DecidedPrepared(r, msgs)
+  then msgs gains Commit
+  same rmState
+  same aState
+
+Move: DecideAbort
+  if some r in RM has DecidedAborted(r, msgs)
+  then msgs gains Abort
+  same rmState
+  same aState

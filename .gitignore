@@ -1,0 +1,30 @@
+.venv/
+__pycache__/
+*.py[cod]
+
+# Generated TLA/TLC artifacts
+*.tla
+*.out
+*.trace
+states/
+metadata/
+
+# Local environment files
+.env
+.env.*
+docs/internal/
+
+# Local AI/editor agent state
+.codex/
+.agents/
+.claude/
+.cursor/
+
+# OS/editor noise
+.DS_Store
+.idea/
+/.vscode/
+*.vsix
+build/
+dist/
+*.egg-info/

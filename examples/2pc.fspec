@@ -1,0 +1,92 @@
+Machine: TwoPhaseCommit
+
+Given:
+  RM
+
+State:
+  rmState is a table from RM to one of:
+    working
+    prepared
+    committed
+    aborted
+
+  tmState is one of:
+    init
+    done
+
+  tmPrepared is a set of RM
+
+  msgs is a set of Messages
+
+Messages:
+  Prepared message has:
+    type = Prepared
+    rm in RM
+
+  Commit message has:
+    type = Commit
+
+  Abort message has:
+    type = Abort
+
+Initially:
+  every r in RM has rmState[r] = working
+  tmState = init
+  tmPrepared = {}
+  msgs = {}
+
+Move: RMPrepare
+  for some r in RM
+  if rmState[r] = working
+  then rmState[r] becomes prepared
+  then msgs gains Prepared(r)
+  same tmState
+  same tmPrepared
+
+Move: RMChooseToAbort
+  for some r in RM
+  if rmState[r] = working
+  then rmState[r] becomes aborted
+  same tmState
+  same tmPrepared
+  same msgs
+
+Move: TMRcvPrepared
+  for some r in RM
+  if tmState = init
+  if Prepared(r) is in msgs
+  then tmPrepared becomes tmPrepared plus {r}
+  same rmState
+  same tmState
+  same msgs
+
+Move: TMCommit
+  if tmState = init
+  if tmPrepared = RM
+  then tmState becomes done
+  then msgs gains Commit
+  same rmState
+  same tmPrepared
+
+Move: TMAbort
+  if tmState = init
+  then tmState becomes done
+  then msgs gains Abort
+  same rmState
+  same tmPrepared
+
+Move: RMRcvCommitMsg
+  for some r in RM
+  if Commit is in msgs
+  then rmState[r] becomes committed
+  same tmState
+  same tmPrepared
+  same msgs
+
+Move: RMRcvAbortMsg
+  for some r in RM
+  if Abort is in msgs
+  then rmState[r] becomes aborted
+  same tmState
+  same tmPrepared
+  same msgs

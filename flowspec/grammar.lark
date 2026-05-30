@@ -1,0 +1,315 @@
+// flowspec.lark
+// Declarative external DSL for state-machine-first TLA+ generation.
+
+start: machine_doc
+
+machine_doc: machine_header section*
+
+machine_header: "Machine:" NAME _NL+
+
+section: given_section
+       | assume_section
+       | state_section
+       | message_section
+       | initially_section
+       | move_section
+       | bad_state_section
+       | always_section
+       | eventually_section
+       | fairness_section
+
+
+// ------------------------------------------------------------
+// Top-level sections
+// ------------------------------------------------------------
+
+given_section: "Given:" _NL INDENT given_item+ DEDENT
+given_item: NAME _NL
+
+assume_section: "Assume:" _NL INDENT fact_line+ DEDENT
+
+state_section: "State:" _NL INDENT state_item+ DEDENT
+state_item: NAME IS type_expr _NL?
+          | NAME PER NAME IS type_expr _NL?
+
+message_section: "Messages:" _NL INDENT message_item+ DEDENT
+message_item: NAME MESSAGE? HAS ":" _NL INDENT message_field+ DEDENT
+message_field: NAME EQUAL expr _NL
+             | NAME IN expr _NL
+
+initially_section: "Initially:" _NL INDENT fact_line+ DEDENT
+
+move_section: "Move:" NAME _NL INDENT move_line+ DEDENT
+
+bad_state_section: "Bad state:" NAME _NL INDENT expr_block DEDENT
+
+always_section: "Always:" NAME _NL INDENT expr_block DEDENT
+
+eventually_section: "Eventually:" NAME _NL INDENT expr_block DEDENT
+
+fairness_section: "Fairness:" _NL INDENT fairness_item+ DEDENT
+
+
+// ------------------------------------------------------------
+// Move lines
+// ------------------------------------------------------------
+
+move_line: quantifier_line
+         | if_line
+         | then_line
+         | otherwise_line
+         | same_line
+
+quantifier_line: FOR SOME binding _NL
+if_line: IF expr _NL
+then_line: THEN effect _NL
+otherwise_line: OTHERWISE effect _NL
+same_line: SAME lvalue _NL
+
+effect: lvalue BECOMES expr
+      | lvalue STAYS expr
+      | lvalue GAINS expr
+
+
+// ------------------------------------------------------------
+// Facts / expression blocks
+// ------------------------------------------------------------
+
+fact_line: expr _NL?
+
+expr_block: expr_line+
+
+expr_line: expr _NL?
+
+
+// ------------------------------------------------------------
+// Fairness
+// ------------------------------------------------------------
+
+fairness_item: fairness_kind NAME fairness_params? _NL
+
+fairness_kind: WEAK | STRONG
+
+fairness_params: "(" binding_list ")"
+
+
+// ------------------------------------------------------------
+// Types
+// ------------------------------------------------------------
+
+type_expr: one_of_type
+         | table_type
+         | set_type
+         | sequence_type
+         | record_type
+         | simple_type
+
+one_of_type: ONE OF ":" _NL INDENT enum_value+ DEDENT
+           | ONE OF set_literal
+
+table_type: A TABLE FROM NAME TO type_expr
+          | TABLE FROM NAME TO type_expr
+          | NAME ARROW type_expr
+
+set_type: A SET OF type_expr
+        | SET OF type_expr
+
+sequence_type: SEQUENCE OF type_expr
+
+record_type: RECORD ":" _NL INDENT record_field+ DEDENT
+record_field: NAME IN expr _NL
+
+simple_type: NAME
+
+enum_value: NAME _NL
+
+
+// ------------------------------------------------------------
+// Expressions
+// ------------------------------------------------------------
+
+expr: implication
+
+implication: or_expr
+           | or_expr IMPLIES implication
+
+or_expr: and_expr (OR and_expr)*
+
+and_expr: not_expr (AND not_expr)*
+
+not_expr: NOT not_expr
+        | quant_expr
+
+quant_expr: forall_expr
+          | exists_expr
+          | no_expr
+          | comparison
+
+forall_expr: EVERY binding HAS expr
+           | EVERY binding ("," binding)+ HAS expr
+           | EVERY binding ":" expr
+
+exists_expr: SOME binding HAS expr
+           | SOME binding ("," binding)+ HAS expr
+           | SOME binding ":" expr
+
+no_expr: NO binding HAS expr
+       | NO binding ("," binding)+ HAS expr
+       | NO binding ":" expr
+
+comparison: sum_expr comp_op sum_expr
+          | sum_expr INTERSECTS sum_expr
+          | sum_expr IS NOT sum_expr
+          | sum_expr IS ONE OF set_literal
+          | sum_expr IS IN sum_expr
+          | sum_expr IS A TABLE FROM NAME TO type_expr
+          | sum_expr IS TABLE FROM NAME TO type_expr
+          | sum_expr IS A SET OF type_expr
+          | sum_expr IS SET OF type_expr
+          | sum_expr IS A SUBSET OF sum_expr
+          | sum_expr IS SUBSET OF sum_expr
+          | sum_expr IS sum_expr
+          | sum_expr
+
+comp_op: EQUAL
+       | NOT_EQUAL
+       | IN
+       | LTE
+       | LT
+       | GTE
+       | GT
+
+sum_expr: product_expr ((PLUS | PLUS_WORD | MINUS | EXCEPT) product_expr)*
+
+product_expr: atom ((STAR | SLASH) atom)*
+
+atom: subset_expr
+    | call_expr
+    | map_expr
+    | set_literal
+    | name_ref
+    | scalar_literal
+    | "(" expr ")"
+
+scalar_literal: STRING
+              | NUMBER
+              | TRUE
+              | FALSE
+
+set_literal: "{" [expr ("," expr)*] "}"
+
+map_expr: MAP NAME IN expr ARROW expr
+
+call_expr: NAME "(" [call_arg ("," call_arg)*] ")"
+
+call_arg: NAME EQUAL expr
+        | expr
+
+subset_expr: SUBSET name_ref
+
+
+// ------------------------------------------------------------
+// Bindings / lvalues / refs
+// ------------------------------------------------------------
+
+binding: NAME IN expr
+
+binding_list: binding ("," binding)*
+
+lvalue: name_ref
+
+name_ref: NAME index_suffix*
+
+index_suffix: "[" expr "]"
+            | "." NAME
+
+
+// ------------------------------------------------------------
+// Keywords
+// Higher priority than NAME to avoid "one" becoming NAME.
+// ------------------------------------------------------------
+
+MACHINE.10: "Machine"
+GIVEN.10: "Given"
+STATE.10: "State"
+INITIALLY.10: "Initially"
+MOVE.10: "Move"
+MESSAGE.10: "message"
+
+A.10: "a"
+TABLE.10: "table"
+FROM.10: "from"
+TO.10: "to"
+PER.10: "per"
+SET.10: "set"
+SUBSET.10: "subset" | "SUBSET"
+SEQUENCE.10: "sequence"
+RECORD.10: "record"
+ONE.10: "one"
+OF.10: "of"
+
+FOR.10: "for"
+SOME.10: "some"
+EVERY.10: "every"
+NO.10: "no"
+HAS.10: "has"
+
+IF.10: "if"
+THEN.10: "then"
+OTHERWISE.10: "otherwise"
+SAME.10: "same"
+BECOMES.10: "becomes"
+STAYS.10: "stays"
+GAINS.10: "gains"
+
+IS.10: "is"
+NOT.10: "not"
+AND.10: "and"
+OR.10: "or"
+IN.10: "in"
+MAP.10: "map"
+EXCEPT.10: "except"
+INTERSECTS.10: "intersects"
+
+WEAK.10: "weak"
+STRONG.10: "strong"
+
+TRUE.10: "true"
+FALSE.10: "false"
+
+
+// ------------------------------------------------------------
+// Operators
+// ------------------------------------------------------------
+
+IMPLIES: "=>"
+NOT_EQUAL: "!="
+LTE: "<="
+GTE: ">="
+EQUAL: "="
+LT: "<"
+GT: ">"
+ARROW: "->"
+
+PLUS: "+"
+PLUS_WORD.10: "plus"
+MINUS: "-"
+STAR: "*"
+SLASH: "/"
+
+
+// ------------------------------------------------------------
+// Generic terminals
+// ------------------------------------------------------------
+
+NAME: /[A-Za-z_][A-Za-z0-9_]*/
+
+STRING: /"([^"\\]|\\.)*"/
+
+NUMBER: /-?[0-9]+/
+
+_NL: /(\r?\n[\t ]*)+/
+
+%declare INDENT DEDENT
+
+%ignore /[ \t]+/
