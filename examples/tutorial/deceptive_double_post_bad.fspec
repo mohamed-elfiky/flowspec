@@ -1,0 +1,42 @@
+Machine: DeceptiveDoublePostBad
+
+Given:
+  Worker
+
+State:
+  status is one of:
+    PENDING
+    POSTED
+  amount is one of {60}
+  sourceBalance is one of {-20, 40, 100}
+  destinationBalance is one of {0, 60, 120}
+  postingAttempts is a set of Worker
+
+Initially:
+  status = PENDING
+  amount = 60
+  sourceBalance = 100
+  destinationBalance = 0
+  postingAttempts = {}
+
+Move: WorkerReadsPending
+  for some worker in Worker
+  if status = PENDING
+  if sourceBalance >= amount
+  then postingAttempts gains worker
+
+Move: WorkerPostsFromAttempt
+  for some worker in Worker
+  if worker is in postingAttempts
+  then status becomes POSTED
+  then sourceBalance becomes sourceBalance - amount
+  then destinationBalance becomes destinationBalance + amount
+
+Bad state: Overdraft
+  sourceBalance < 0
+
+Bad state: DoublePosted
+  destinationBalance > amount
+
+Always: PostedHasAttempt
+  status = POSTED => postingAttempts is not {}

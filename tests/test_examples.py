@@ -13,6 +13,11 @@ EXAMPLES = [
     PROJECT_ROOT / "examples" / "2pc.fspec",
 ]
 
+TUTORIAL_EXAMPLES = [
+    PROJECT_ROOT / "examples" / "tutorial" / "deceptive_double_post_bad.fspec",
+    PROJECT_ROOT / "examples" / "tutorial" / "deceptive_double_post_fixed.fspec",
+]
+
 
 class ExampleIntegrationTests(unittest.TestCase):
     @classmethod
@@ -36,6 +41,14 @@ class ExampleIntegrationTests(unittest.TestCase):
                 self.assertIn("Init ==", tla)
                 self.assertIn("Next ==", tla)
                 self.assertTrue(tla.endswith("====\n"))
+
+    def test_tutorial_examples_compile_and_validate(self):
+        for source_path in TUTORIAL_EXAMPLES:
+            with self.subTest(example=source_path.name):
+                tla = self.compile_example(source_path)
+                self.assertIn("---- MODULE DeceptiveDoublePost", tla)
+                self.assertIn("NoOverdraft ==", tla)
+                self.assertIn("NoDoublePosted ==", tla)
 
     def test_payment_generates_business_invariants(self):
         tla = self.compile_example(PROJECT_ROOT / "examples" / "payment.fspec")

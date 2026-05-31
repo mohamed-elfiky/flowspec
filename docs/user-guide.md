@@ -415,6 +415,125 @@ That catches violations like:
 
 For business workflows, these are the failures that matter. They are hard to catch with example-based unit tests because the bug is in the ordering, not in one function call.
 
+### Deceptive Example: The Payment That Looks Safe
+
+This example is designed to challenge your confidence.
+
+At first glance, the design sounds fine:
+
+```text
+A worker checks that the payment is pending.
+The worker checks that enough balance exists.
+Then a later posting step moves the money.
+```
+
+A developer might look at this and say: "we checked the balance before posting, so overdraft cannot happen."
+
+The full broken example is in `examples/tutorial/deceptive_double_post_bad.fspec`.
+
+The important part is this split between reading and posting:
+
+```text
+Move: WorkerReadsPending
+  for some worker in Worker
+  if status = PENDING
+  if sourceBalance >= amount
+  then postingAttempts gains worker
+
+Move: WorkerPostsFromAttempt
+  for some worker in Worker
+  if worker is in postingAttempts
+  then status becomes POSTED
+  then sourceBalance becomes sourceBalance - amount
+  then destinationBalance becomes destinationBalance + amount
+```
+
+The design feels reasonable because `WorkerReadsPending` checked both `status` and `sourceBalance`. The hidden bug is that `postingAttempts` remains valid after posting. A retry, duplicate worker execution, or stale job can run `WorkerPostsFromAttempt` again.
+
+The property says the business must never overdraft:
+
+```text
+Bad state: Overdraft
+  sourceBalance < 0
+```
+
+Run the broken model:
+
+```sh
+flowspec-suite --tlc --tlc-image flowspec-tlc:local examples/tutorial/deceptive_double_post_bad.fspec
+```
+
+TLC rejects it. The important part of the counterexample is:
+
+```text
+State 1:
+  status = "PENDING"
+  sourceBalance = 100
+  destinationBalance = 0
+  postingAttempts = {}
+
+State 2: WorkerReadsPending
+  status = "PENDING"
+  sourceBalance = 100
+  postingAttempts = {w1}
+
+State 3: WorkerPostsFromAttempt
+  status = "POSTED"
+  sourceBalance = 40
+  destinationBalance = 60
+  postingAttempts = {w1}
+
+State 4: WorkerPostsFromAttempt
+  status = "POSTED"
+  sourceBalance = -20
+  destinationBalance = 120
+  postingAttempts = {w1}
+```
+
+The theory was: "a worker checked the balance, therefore posting is safe."
+
+The model says: "the check and the effect were separated, and the stale posting attempt can be reused."
+
+That is exactly the kind of bug FlowSpec should expose. The bad state is not a syntax problem. It is a design problem.
+
+The fixed example is in `examples/tutorial/deceptive_double_post_fixed.fspec`.
+
+The fix introduces an explicit in-flight state and only allows posting from that state:
+
+```text
+Move: WorkerClaimsPayment
+  for some worker in Worker
+  if status = PENDING
+  if sourceBalance >= amount
+  then status becomes POSTING
+  then postingAttempts gains worker
+
+Move: ClaimedWorkerPosts
+  for some worker in Worker
+  if status = POSTING
+  if worker is in postingAttempts
+  then status becomes POSTED
+  then sourceBalance becomes sourceBalance - amount
+  then destinationBalance becomes destinationBalance + amount
+```
+
+Now the first move claims the payment by moving it out of `PENDING`. The second move requires `POSTING`, so once the payment becomes `POSTED`, a retry of the posting action is no longer enabled.
+
+Run the fixed model:
+
+```sh
+flowspec-suite --tlc --tlc-image flowspec-tlc:local examples/tutorial/deceptive_double_post_fixed.fspec
+```
+
+Expected result:
+
+```text
+PASS compile examples/tutorial/deceptive_double_post_fixed.fspec -> DeceptiveDoublePostFixed.tla
+PASS TLC DeceptiveDoublePostFixed
+```
+
+This is the buy-in point: FlowSpec is not asking the developer to trust a diagram or a review comment. It gives TLC an executable version of the design, then asks whether every possible move ordering still respects the business properties.
+
 ### Properties
 
 A property is an executable design claim. It turns a vague requirement into something TLC can check.
