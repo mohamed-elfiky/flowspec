@@ -48,7 +48,7 @@ Avoid exposing map/table syntax in user-facing examples unless compatibility is 
 Run the supported compile suite:
 
 ```sh
-.venv/bin/python run_suite.py
+flowspec-suite
 ```
 
 Validate one file semantically:
@@ -66,7 +66,7 @@ flowspec examples/payment.fspec
 Run TLC through the isolated Docker backend:
 
 ```sh
-.venv/bin/python run_suite.py --tlc
+flowspec-suite --tlc
 ```
 
 Check the VS Code extension:

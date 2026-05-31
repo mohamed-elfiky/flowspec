@@ -36,18 +36,18 @@ npm run check --prefix extension
 
 ## TLC
 
-The TLC commands use the repository's `run_suite.py`.
+The TLC commands run the `flowspec.suite` Python module.
 
 When you run `FlowSpec: Run TLC Current File`, the extension executes:
 
 ```text
-run_suite.py --tlc --tlc-backend <backend> <active-file.fspec>
+python -m flowspec.suite --tlc --tlc-backend <backend> <active-file.fspec>
 ```
 
 When you run `FlowSpec: Run TLC Suite`, the extension executes:
 
 ```text
-run_suite.py --tlc --tlc-backend <backend>
+python -m flowspec.suite --tlc --tlc-backend <backend>
 ```
 
 Docker is the default TLC backend. TLC runs inside a container using generated `.tla` and `.cfg` files in a temporary directory. The container is started with no network, a read-only root filesystem, a read-only mounted work directory, and a writable `/tmp`.
@@ -55,7 +55,7 @@ Docker is the default TLC backend. TLC runs inside a container using generated `
 Validation uses:
 
 ```text
-parse_tlasm.py --diagnostics-json <active-file.fspec>
+python -m flowspec.compiler --diagnostics-json <active-file.fspec>
 ```
 
 That means AI-written specs get the same semantic checks in VS Code that the CLI uses.

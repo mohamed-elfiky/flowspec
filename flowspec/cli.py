@@ -1,4 +1,4 @@
-from parse_tlasm import main
+from flowspec.compiler import main
 
 
 if __name__ == "__main__":

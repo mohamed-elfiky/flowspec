@@ -32,6 +32,16 @@ Readable spec document
 
 Specs should feel like declarative specification sheets, not raw TLA+, general-purpose programming code, or YAML.
 
+## Examples
+
+Supported examples live in `examples/`:
+
+- `transaction.fspec`: minimal state transition
+- `account.fspec`: per-account state
+- `payment.fspec`: payment posting and overdraft protection
+- `wallet_topup.fspec`: wallet top-up, unknown provider result, polling, and reconciliation reversal
+- `2pc.fspec`: coordination pressure test for messages and fairness
+
 ## Commands
 
 Create a local environment:

@@ -1,0 +1,104 @@
+Machine: WalletTopup
+
+Given:
+  Request
+  Wallet
+  MerchantWallet
+  UserWallet
+
+State:
+  topupStatus per Request is one of:
+    NOT_STARTED
+    PENDING
+    COMPLETED
+    FAILED
+    UNKNOWN
+    REVERSED
+  walletBalance per Wallet is one of {0, 50, 100}
+  topupWallet per Request is Wallet
+  capturedAmount per Request is one of {0, 50}
+  reconEvents is a set of Messages
+
+Messages:
+  Topup message has:
+    type = Topup
+    request in Request
+
+  TopupReverse message has:
+    type = TopupReverse
+    request in Request
+
+Initially:
+  every request in Request has topupStatus[request] = NOT_STARTED
+  walletBalance[MerchantWallet] = 100
+  walletBalance[UserWallet] = 0
+  every request in Request has topupWallet[request] = UserWallet
+  every request in Request has capturedAmount[request] = 0
+  reconEvents = {}
+
+Move: SubmitTopup
+  for some request in Request
+  if topupStatus[request] = NOT_STARTED
+  if walletBalance[MerchantWallet] >= 50
+  then topupStatus[request] becomes PENDING
+
+Move: TopupCompletes
+  for some request in Request
+  if topupStatus[request] = PENDING
+  if walletBalance[MerchantWallet] >= 50
+  then topupStatus[request] becomes COMPLETED
+  then walletBalance[MerchantWallet] becomes walletBalance[MerchantWallet] - 50
+  then walletBalance[topupWallet[request]] becomes walletBalance[topupWallet[request]] + 50
+  then capturedAmount[request] becomes 50
+  then reconEvents gains Topup(request)
+
+Move: TopupFails
+  for some request in Request
+  if topupStatus[request] = PENDING
+  then topupStatus[request] becomes FAILED
+
+Move: TopupResultUnknown
+  for some request in Request
+  if topupStatus[request] = PENDING
+  then topupStatus[request] becomes UNKNOWN
+
+Move: PollDetailsCompleted
+  for some request in Request
+  if topupStatus[request] = UNKNOWN
+  if walletBalance[MerchantWallet] >= 50
+  then topupStatus[request] becomes COMPLETED
+  then walletBalance[MerchantWallet] becomes walletBalance[MerchantWallet] - 50
+  then walletBalance[topupWallet[request]] becomes walletBalance[topupWallet[request]] + 50
+  then capturedAmount[request] becomes 50
+  then reconEvents gains Topup(request)
+
+Move: PollDetailsFailed
+  for some request in Request
+  if topupStatus[request] = UNKNOWN
+  then topupStatus[request] becomes FAILED
+
+Move: ReconcileTopupReverse
+  for some request in Request
+  if topupStatus[request] = COMPLETED
+  if Topup(request) is in reconEvents
+  if walletBalance[topupWallet[request]] >= capturedAmount[request]
+  then topupStatus[request] becomes REVERSED
+  then walletBalance[MerchantWallet] becomes walletBalance[MerchantWallet] + capturedAmount[request]
+  then walletBalance[topupWallet[request]] becomes walletBalance[topupWallet[request]] - capturedAmount[request]
+  then capturedAmount[request] becomes 0
+  then reconEvents gains TopupReverse(request)
+
+Bad state: MerchantOverdrawn
+  walletBalance[MerchantWallet] < 0
+
+Bad state: WalletOverdrawn
+  some wallet in Wallet has walletBalance[wallet] < 0
+
+Bad state: CompletedWithoutRecon
+  some request in Request has topupStatus[request] = COMPLETED and not Topup(request) is in reconEvents
+
+Bad state: ReverseWithoutTopup
+  some request in Request has TopupReverse(request) is in reconEvents and not Topup(request) is in reconEvents
+
+Always: TerminalReversalIsReconciled
+  every request in Request has topupStatus[request] = REVERSED => TopupReverse(request) is in reconEvents

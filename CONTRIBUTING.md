@@ -15,7 +15,8 @@ Before opening a PR, run:
 
 ```sh
 flowspec-suite
-.venv/bin/python -m py_compile parse_tlasm.py run_suite.py flowspec/cli.py flowspec/suite.py
+.venv/bin/python -m unittest discover -s tests
+.venv/bin/python -m py_compile flowspec/compiler.py flowspec/cli.py flowspec/suite.py
 npm run check --prefix extension
 ```
 

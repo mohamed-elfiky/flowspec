@@ -307,6 +307,16 @@ Released versions can use a published image instead of a local build:
 FLOWSPEC_TLC_IMAGE=ghcr.io/mohamed-elfiky/flowspec-tlc:0.0.1 flowspec-suite --tlc
 ```
 
+## Realistic Example Fixtures
+
+The supported examples are intentionally business-shaped:
+
+- `examples/payment.fspec` models posting a payment without overdrawing the source balance.
+- `examples/wallet_topup.fspec` models a wallet top-up flow: submit, completed, failed, unknown provider result, polling for details, and reconciliation reversal.
+- `examples/account.fspec` models per-account state.
+
+The provider-inspired fixture is useful because it looks like real integration work: a provider can return an unknown result, the system must poll before deciding, and reconciliation can later report a reverse event. That is the kind of workflow ambiguity FlowSpec should make explicit before implementation.
+
 ## What To Model First
 
 Start with the business states and the bad outcomes.

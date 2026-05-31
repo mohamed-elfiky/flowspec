@@ -130,12 +130,12 @@ async function runSuite(context, withTlc) {
 
 async function runSuiteCommand(context, args) {
   const root = findProjectRoot(context, vscode.window.activeTextEditor?.document);
-  const script = path.join(root, 'run_suite.py');
+  const module = 'flowspec.suite';
   try {
     output.clear();
     output.show(true);
-    output.appendLine(`$ ${pythonPath(root)} ${script} ${args.join(' ')}`);
-    const result = await runPython(root, script, args);
+    output.appendLine(`$ ${pythonPath(root)} -m ${module} ${args.join(" ")}`);
+    const result = await runPythonModule(root, module, args);
     if (result.stdout) {
       output.append(result.stdout);
     }
@@ -197,8 +197,7 @@ function scheduleValidation(context, document) {
 async function runParseTool(context, document, toolArgs, options = {}) {
   const root = findProjectRoot(context, document);
   return withTempSource(document, async (sourcePath) => {
-    const script = path.join(root, 'parse_tlasm.py');
-    return runPython(root, script, [...toolArgs, sourcePath], options);
+    return runPythonModule(root, 'flowspec.compiler', [...toolArgs, sourcePath], options);
   });
 }
 
@@ -213,11 +212,11 @@ async function withTempSource(document, callback) {
   }
 }
 
-function runPython(root, script, args, options = {}) {
+function runPythonModule(root, module, args, options = {}) {
   return new Promise((resolve, reject) => {
     cp.execFile(
       pythonPath(root),
-      [script, ...args],
+      ['-m', module, ...args],
       {
         cwd: root,
         env: { ...process.env, ...tlcEnv() },
@@ -368,7 +367,7 @@ function findProjectRoot(context, document) {
   }
   candidates.push(path.resolve(context.extensionPath, '..'));
 
-  const root = candidates.find((candidate) => fs.existsSync(path.join(candidate, 'parse_tlasm.py')));
+  const root = candidates.find((candidate) => fs.existsSync(path.join(candidate, 'flowspec', 'compiler.py')));
   if (!root) {
     throw new Error('Could not find FlowSpec project root. Set flowspec.projectRoot in VS Code settings.');
   }

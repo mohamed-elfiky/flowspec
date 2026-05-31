@@ -29,7 +29,6 @@ flowspec = "flowspec.cli:main"
 flowspec-suite = "flowspec.suite:main"
 
 [tool.setuptools]
-py-modules = ["parse_tlasm", "run_suite"]
 packages = ["flowspec"]
 include-package-data = true
 

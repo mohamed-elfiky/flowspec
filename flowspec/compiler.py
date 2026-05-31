@@ -7,7 +7,8 @@ from pathlib import Path
 from lark import Lark, Token, Tree
 from lark.indenter import Indenter
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+PACKAGE_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = PACKAGE_ROOT.parent
 DEFAULT_SOURCE = PROJECT_ROOT / "examples" / "transaction.fspec"
 
 
@@ -641,9 +642,9 @@ def render_init(spec: Spec, ctx: RenderContext, include_type_ok: bool) -> list[s
 
 def render_move(move: Move, state_vars: list[str], ctx: RenderContext) -> list[str]:
     body = [render_expr(expr, ctx) for expr in move.guards]
-    body.extend(render_effect(effect, ctx) for effect in move.effects)
+    body.extend(render_effects(move.effects, ctx))
 
-    changed = {base_lvalue_name(lvalue) for lvalue, _, _ in move.effects}
+    changed = {base_lvalue_name(lvalue) for lvalue, operator, _ in move.effects if operator != "STAYS"}
     unchanged = [name for name in state_vars if name not in changed]
     if unchanged:
         body.append(f"UNCHANGED <<{', '.join(unchanged)}>>")
@@ -662,6 +663,61 @@ def render_move(move: Move, state_vars: list[str], ctx: RenderContext) -> list[s
     else:
         lines = [f"{move.name} ==", *[f"  /\\ {line}" for line in body], ""]
     return lines
+
+
+def render_effects(effects: list[tuple[Tree, str, Tree]], ctx: RenderContext) -> list[str]:
+    lines = []
+    next_effects_by_base: dict[str, list[tuple[Tree, str, Tree]]] = {}
+    for effect in effects:
+        lvalue, operator, _ = effect
+        if operator == "STAYS":
+            lines.append(render_effect(effect, ctx))
+            continue
+        base = base_lvalue_name(lvalue)
+        next_effects_by_base.setdefault(base, []).append(effect)
+
+    for grouped_effects in next_effects_by_base.values():
+        lines.append(render_next_effect_group(grouped_effects, ctx))
+    return lines
+
+
+def render_next_effect_group(effects: list[tuple[Tree, str, Tree]], ctx: RenderContext) -> str:
+    if len(effects) == 1:
+        return render_effect(effects[0], ctx)
+
+    first_lvalue, _, _ = effects[0]
+    base = base_lvalue_name(first_lvalue)
+    suffixes_by_effect = [(effect, lvalue_suffixes(effect[0])) for effect in effects]
+
+    if all(not suffixes for _, suffixes in suffixes_by_effect):
+        if all(operator == "GAINS" for _, operator, _ in effects):
+            name = render_lvalue(first_lvalue, ctx)
+            additions = [f"{{{render_expr(expr, ctx)}}}" for _, _, expr in effects]
+            return f"{name}' = {name} \\cup " + " \\cup ".join(additions)
+        raise ValueError(f"State '{base}' has multiple next-state assignments in one move.")
+
+    if any(not suffixes for _, suffixes in suffixes_by_effect):
+        raise ValueError(f"State '{base}' mixes whole-value and indexed assignments in one move.")
+
+    updates = []
+    seen_paths = set()
+    for (lvalue, operator, expr), suffixes in suffixes_by_effect:
+        path = render_except_path(suffixes, ctx)
+        if path in seen_paths:
+            raise ValueError(f"State '{base}' assigns the same indexed path more than once in one move.")
+        seen_paths.add(path)
+        if operator == "BECOMES":
+            updates.append(f"{path} = {render_expr(expr, ctx)}")
+        elif operator == "GAINS":
+            updates.append(f"{path} = {render_lvalue(lvalue, ctx)} \\cup {{{render_expr(expr, ctx)}}}")
+        else:
+            raise ValueError(f"Unsupported next-state effect operator {operator}")
+    return f"{base}' = [{base} EXCEPT {', '.join(updates)}]"
+
+
+def lvalue_suffixes(lvalue: Tree) -> list[Tree]:
+    name_ref = first_tree(lvalue, "name_ref")
+    return tree_children(name_ref, "index_suffix")
 
 
 def render_effect(effect: tuple[Tree, str, Tree], ctx: RenderContext) -> str:
