@@ -1,7 +1,9 @@
 from pathlib import Path
 import unittest
 
-from flowspec.compiler import build_parser, compile_tla, parse_spec, semantic_diagnostics
+from flowspec.backends.tla import compile_tla
+from flowspec.parser import build_parser, parse_spec
+from flowspec.validator import semantic_diagnostics
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]

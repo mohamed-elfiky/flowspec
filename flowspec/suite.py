@@ -5,7 +5,8 @@ import sys
 import tempfile
 from pathlib import Path
 
-from flowspec.compiler import build_parser, compile_tla, parse_spec
+from flowspec.backends.tla import compile_tla
+from flowspec.parser import build_parser, parse_spec
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent

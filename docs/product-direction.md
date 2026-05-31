@@ -6,6 +6,21 @@ The target user is an application programmer who needs to design and validate be
 
 Concurrency is a core reason this exists. Business systems fail when valid actions arrive in surprising orders: retries, duplicate commands, delayed events, two workers processing the same entity, or approval and cancellation racing each other. FlowSpec should help programmers model those interleavings without forcing them to learn raw TLA+ first.
 
+## Product Thesis
+
+FlowSpec's job is not only to simplify TLA+ syntax.
+
+The hard part is learning to think abstractly about the system:
+
+```text
+not code order, but possible states
+not function calls, but enabled moves
+not happy paths, but all behaviors
+not patching edge cases, but writing properties that rule them out
+```
+
+FlowSpec should help everyday developers practice that design discipline without making them start from raw mathematical notation. The product should make abstract system thinking feel approachable while keeping the generated model precise enough for TLC.
+
 ## Core Workflow
 
 ```text
