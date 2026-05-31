@@ -44,6 +44,17 @@ This says:
 - `Post` can run only when funds are available
 - an overdraft is a bad state
 
+This example is intentionally small. Real value comes when you add the uncomfortable cases that product code usually handles badly:
+
+- the same command runs twice
+- a retry arrives after the workflow already moved on
+- an external provider returns an unknown result
+- a cancellation races with approval
+- a reversal arrives after a successful posting
+- an audit or reconciliation event is missing
+
+Those are design problems, not just test cases. FlowSpec gives you a place to write them before implementation.
+
 ## File Shape
 
 Every FlowSpec file starts with a machine name:
@@ -128,7 +139,7 @@ status per Order is one of:
 limit per Customer is nat
 ```
 
-This means “for each `Account`, there is one `balance`.” In programming terms it is like a dictionary or map, but the DSL phrase keeps the focus on the business model.
+This means "for each `Account`, there is one `balance`." In programming terms it is like a dictionary or map, but the DSL phrase keeps the focus on the business model.
 
 ## Initially
 
@@ -257,6 +268,354 @@ balance + amount
 seenIds plus {id}
 Ballot except {0}
 ```
+
+## System Design With Properties
+
+FlowSpec is not just a nicer syntax for TLA+. The useful part is the design discipline it pushes: describe the business world, describe what can happen, then write properties that say what must never break.
+
+Think in this order:
+
+1. What exists in the business?
+2. What state changes over time?
+3. What actions, events, retries, timeouts, or reconciliation records can move the system forward?
+4. What bad outcomes are unacceptable?
+5. What facts should always remain true?
+6. What progress should eventually happen, if the environment keeps cooperating?
+
+The goal is not to model every line of future code. The goal is to model the business rules strongly enough that TLC can explore weird orderings, retries, and edge cases before implementation.
+
+### State Space
+
+The state space is the set of all possible states your workflow can be in.
+
+For a payment system, state might include:
+
+```text
+State:
+  status is one of:
+    PENDING
+    POSTED
+    REJECTED
+  sourceBalance is one of {0, 50, 100}
+  destinationBalance is one of {0, 50, 100}
+```
+
+This does not say what happens. It only defines the shape of the world. TLC will later explore reachable combinations of these values.
+
+Good state variables are business facts:
+
+- payment status
+- account balance
+- approval state
+- reserved quantity
+- retry decision
+- messages already received
+- reconciliation events already processed
+
+Avoid starting with implementation facts:
+
+- database row locks
+- HTTP route names
+- queue topic names
+- class names
+- framework callbacks
+
+Those may matter later, but v0 FlowSpec works best when the first model is the business workflow.
+
+### Moves
+
+Moves are the things that can happen next.
+
+A move can represent a user command, provider callback, worker retry, timeout, reconciliation record, approval, cancellation, or internal business decision.
+
+```text
+Move: Post
+  if status = PENDING
+  if sourceBalance >= amount
+  then status becomes POSTED
+  then sourceBalance becomes sourceBalance - amount
+  then destinationBalance becomes destinationBalance + amount
+```
+
+Do not assume moves run in the order they appear in the file. TLC treats enabled moves as possible next steps. That is what makes the model useful for concurrency: if two things could happen in either order in production, the model should allow TLC to try both orders.
+
+A guard says when a move is legal:
+
+```text
+if status = PENDING
+if sourceBalance >= amount
+```
+
+An effect says what changes:
+
+```text
+then status becomes POSTED
+```
+
+If a rule depends on ordering, encode that ordering in state and guards. Do not rely on document order.
+
+### Hidden Outcomes
+
+The bugs worth finding are usually not in the happy path. They live in the gaps between moves.
+
+A normal implementation discussion might say:
+
+```text
+When payment is pending and funds are available, post it.
+```
+
+That is not enough for system design. Ask what else can happen around that move:
+
+- Can `Post` run twice for the same payment?
+- Can `Reject` run after `Post`?
+- Can a retry use stale state?
+- Can two workers both observe enough balance before either writes the new balance?
+- Can a reversal happen before the original event is recorded?
+- Can reconciliation say the provider disagrees with our local state?
+- Can the system reach a terminal status with missing evidence?
+
+In FlowSpec, each of those questions becomes either another move or another property.
+
+For example, duplicate execution should be modeled as another possible move ordering, not hidden inside code:
+
+```text
+Move: Post
+  if status = PENDING
+  if sourceBalance >= amount
+  then status becomes POSTED
+  then sourceBalance becomes sourceBalance - amount
+
+Move: RetryPost
+  if status = POSTED
+  then status becomes POSTED
+  same sourceBalance
+```
+
+Then the property says what must remain true even if the retry happens:
+
+```text
+Bad state: PostedTwice
+  postedCount > 1
+```
+
+If your current state does not have enough information to express `PostedTwice`, that is a design signal. You may need state like `postedCount`, `processedCommandIds`, `ledgerEntries`, or `reconEvents`. Properties often teach you what state the design actually needs.
+
+### Concurrency Violations
+
+TLC does not run threads like a production runtime. It does something more useful at the design level: it explores possible next moves from each state. If your model says two moves are both possible, TLC can try both orders.
+
+That catches violations like:
+
+- double debit: two postings reduce the same balance twice
+- lost update: one move overwrites evidence written by another move
+- stale decision: an approval uses state that was valid before cancellation
+- invalid terminal transition: a workflow leaves `POSTED` and returns to `PENDING`
+- missing compensation: a reversal changes money but does not record the reverse event
+- impossible recovery: an `UNKNOWN` result has no move that can resolve it
+
+For business workflows, these are the failures that matter. They are hard to catch with example-based unit tests because the bug is in the ordering, not in one function call.
+
+### Properties
+
+A property is an executable design claim. It turns a vague requirement into something TLC can check.
+
+Bad properties are usually vague:
+
+```text
+The payment system should be correct.
+```
+
+Good properties are concrete:
+
+```text
+Bad state: Overdraft
+  sourceBalance < 0
+```
+
+When TLC finds a violation, it gives a path of moves that reaches the bad state. That path is often more useful than a normal unit test because it shows a design-level failure, not just a function-level failure.
+
+### Safety Properties
+
+Safety means "something bad never happens."
+
+In FlowSpec, use `Bad state` for the bad thing directly:
+
+```text
+Bad state: NegativeBalance
+  some account in Account has balance[account] < 0
+```
+
+The compiler also emits the positive invariant name:
+
+```text
+NoNegativeBalance
+```
+
+Use that positive name in the TLC config.
+
+Good safety properties for business systems:
+
+- no balance becomes negative
+- a closed account cannot receive a debit
+- a posted payment is never posted twice
+- inventory is never reserved below zero
+- a rejected request never later becomes approved
+- a reverse event is never processed before the original event exists
+- a terminal workflow never returns to a non-terminal state
+
+Safety properties are the first properties to write. They catch the highest-value bugs early.
+
+### Invariants
+
+An invariant is a fact that must be true in every reachable state.
+
+Use `Always` when you want to name a positive rule:
+
+```text
+Always: StatusIsKnown
+  status is one of {PENDING, POSTED, REJECTED}
+```
+
+Use invariants for rules like:
+
+- every status is from the allowed business vocabulary
+- completed work has the required audit record
+- every reserved item belongs to a known order
+- every reversal has a matching original transaction
+- a terminal state has enough evidence to explain how it got there
+
+For example:
+
+```text
+Always: ReversalHasOriginal
+  every request in Request has topupStatus[request] = REVERSED => Topup(request) is in reconEvents
+```
+
+The difference between `Bad state` and `Always` is mostly how you think about the rule:
+
+- use `Bad state` when the easiest wording is "this must never happen"
+- use `Always` when the easiest wording is "this must always be true"
+
+Both are safety checks when used as TLC invariants.
+
+### Liveness Properties
+
+Liveness means "something good eventually happens."
+
+Use `Eventually` for progress expectations:
+
+```text
+Eventually: PaymentFinishes
+  status is one of {POSTED, REJECTED}
+```
+
+Be careful with liveness. A model checker is allowed to choose any valid next move. If a move stays enabled forever but TLC is allowed to ignore it forever, an eventual property may fail even though the business rule sounds reasonable.
+
+That is where fairness matters.
+
+### Fairness
+
+Fairness tells TLC that a move should not be ignored forever when it remains available.
+
+```text
+Fairness:
+  weak Post
+```
+
+Use fairness when a move represents a reliable worker, scheduler, or system process that should eventually run if it keeps being enabled.
+
+Do not add fairness just to silence a failing liveness check. First ask whether the business really guarantees that progress. For example:
+
+- A local worker that always retries may justify fairness.
+- A third-party provider callback may not justify fairness.
+- A human approval step usually should not be fair unless the business assumes approval eventually happens.
+
+Fairness is a modeling assumption. Treat it like a product decision.
+
+### Property Types At A Glance
+
+| FlowSpec form | Design meaning | Typical question |
+| --- | --- | --- |
+| `TypeOK` | generated type invariant | Are states inside their declared domains? |
+| `Bad state` | forbidden state | Can this unacceptable outcome happen? |
+| `Always` | invariant | Is this rule true after every move? |
+| `Eventually` | liveness | Does the workflow eventually reach a good condition? |
+| `Fairness` | scheduling assumption | If this action stays possible, must it eventually run? |
+
+### Designing A Workflow
+
+For a realistic workflow, start from the failure modes.
+
+Example: wallet top-up.
+
+Business questions:
+
+- Can the merchant wallet go negative?
+- Can the user wallet go negative after reversal?
+- Can a top-up be completed without a reconciliation record?
+- Can a reverse record exist without the original top-up record?
+- What happens if the provider result is unknown?
+- Can polling complete after a local timeout already marked the request failed?
+- Can the same provider event be processed twice?
+- Can a retry create a second top-up instead of observing the first result?
+- Is polling guaranteed, or merely possible?
+
+That turns into FlowSpec concepts:
+
+```text
+State:
+  topupStatus per Request is one of:
+    NOT_STARTED
+    PENDING
+    COMPLETED
+    FAILED
+    UNKNOWN
+    REVERSED
+  walletBalance per Wallet is one of {0, 50, 100}
+  reconEvents is a set of Messages
+```
+
+Then model the uncertain parts explicitly:
+
+```text
+Move: TopupResultUnknown
+  for some request in Request
+  if topupStatus[request] = PENDING
+  then topupStatus[request] becomes UNKNOWN
+
+Move: PollDetailsCompleted
+  for some request in Request
+  if topupStatus[request] = UNKNOWN
+  then topupStatus[request] becomes COMPLETED
+```
+
+Then write the properties:
+
+```text
+Bad state: WalletOverdrawn
+  some wallet in Wallet has walletBalance[wallet] < 0
+
+Bad state: ReverseWithoutTopup
+  some request in Request has TopupReverse(request) is in reconEvents and not Topup(request) is in reconEvents
+```
+
+This is system design: not drawing boxes, not naming services, and not choosing a framework. It is making the rules precise enough that invalid behavior can be explored before code exists.
+
+### Design Checklist
+
+Before calling a spec useful, ask:
+
+- Did we model every business state that affects correctness?
+- Did we include retries, delayed events, duplicate events, and reversals where relevant?
+- Did we include hidden outcomes where two valid moves happen in a surprising order?
+- Did we write the bad outcomes explicitly?
+- Did we write positive invariants for facts that must always hold?
+- Did we avoid assuming move order unless a guard enforces it?
+- Did we keep TLC domains small and finite?
+- Did we avoid adding fairness unless the system really guarantees progress?
+- Did every counterexample teach us something about the design?
+
+A good FlowSpec model should make implementation conversations sharper. After the model passes, engineers and AI tools have a clearer core to build around.
 
 ## Compile
 
