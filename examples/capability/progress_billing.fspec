@@ -19,6 +19,8 @@ State:
     FINAL_INVOICED
     FINAL_CLEARED
     CLOSED
+    CANCELLED
+    ACCEPTANCE_REJECTED
   contractAmount per Project is one of {800}
   recognizedRevenue per Project is one of {0, 320, 600, 800}
   billedAmount per Project is one of {0, 200, 240, 360, 440, 560, 600, 800}
@@ -91,6 +93,22 @@ Messages:
     type = PeriodClosed
     project in Project
 
+  AdvanceInvoiceVoided message has:
+    type = AdvanceInvoiceVoided
+    project in Project
+
+  AdvanceRefunded message has:
+    type = AdvanceRefunded
+    project in Project
+
+  AcceptanceRejected message has:
+    type = AcceptanceRejected
+    project in Project
+
+  ProjectCancelled message has:
+    type = ProjectCancelled
+    project in Project
+
 Initially:
   every project in Project has projectStatus[project] = CONTRACTED
   every project in Project has contractAmount[project] = 800
@@ -118,12 +136,37 @@ Move: ReceiveAdvanceCash
   then cashReceived[project] becomes 240
   then events gains AdvanceCashReceived(project)
 
+Move: VoidAdvanceInvoiceBeforeCash
+  for some project in Project
+  if projectStatus[project] = ADVANCE_INVOICED
+  if cashReceived[project] = 0
+  if recognizedRevenue[project] = 0
+  if closed[project] = NO
+  then projectStatus[project] becomes CANCELLED
+  then billedAmount[project] becomes 0
+  then events gains AdvanceInvoiceVoided(project)
+  then events gains ProjectCancelled(project)
+
 Move: ClearAdvanceAsLiability
   for some project in Project
   if projectStatus[project] = ADVANCE_RECEIVED
   if closed[project] = NO
   then advanceLiability[project] becomes 240
   then events gains AdvanceCleared(project)
+
+Move: RefundAdvanceBeforeWorkStarts
+  for some project in Project
+  if projectStatus[project] = ADVANCE_RECEIVED
+  if cashReceived[project] = 240
+  if recognizedRevenue[project] = 0
+  if accountsReceivable[project] = 0
+  if closed[project] = NO
+  then projectStatus[project] becomes CANCELLED
+  then billedAmount[project] becomes 0
+  then cashReceived[project] becomes 0
+  then advanceLiability[project] becomes 0
+  then events gains AdvanceRefunded(project)
+  then events gains ProjectCancelled(project)
 
 Move: AssessProgress40
   for some project in Project
@@ -174,6 +217,14 @@ Move: RecordAcceptance
   if closed[project] = NO
   then projectStatus[project] becomes ACCEPTED
   then events gains AcceptanceRecorded(project)
+
+Move: RejectAcceptance
+  for some project in Project
+  if projectStatus[project] = MIDPOINT_INVOICED
+  if accountsReceivable[project] = 360
+  if closed[project] = NO
+  then projectStatus[project] becomes ACCEPTANCE_REJECTED
+  then events gains AcceptanceRejected(project)
 
 Move: RecognizeFinalRevenue
   for some project in Project
@@ -266,6 +317,24 @@ Bad state: MidpointClearedWithoutInvoice
 Bad state: FinalClearedWithoutInvoice
   some project in Project has FinalCashCleared(project) is in events and not FinalInvoiceIssued(project) is in events
 
+Bad state: CancelledWithRecognizedRevenue
+  some project in Project has projectStatus[project] = CANCELLED and recognizedRevenue[project] > 0
+
+Bad state: CancelledWithOpenReceivable
+  some project in Project has projectStatus[project] = CANCELLED and accountsReceivable[project] > 0
+
+Bad state: CancelledWithAdvanceLiability
+  some project in Project has projectStatus[project] = CANCELLED and advanceLiability[project] > 0
+
+Bad state: CancelledAndClosed
+  some project in Project has projectStatus[project] = CANCELLED and closed[project] = YES
+
+Bad state: FinalRevenueAfterAcceptanceRejected
+  some project in Project has AcceptanceRejected(project) is in events and FinalRevenueRecognized(project) is in events
+
+Bad state: ClosedAfterAcceptanceRejected
+  some project in Project has AcceptanceRejected(project) is in events and closed[project] = YES
+
 Always: RevenueRecognized40RequiresAssessment
   every project in Project has RevenueRecognized40(project) is in events => ProgressAssessed40(project) is in events
 
@@ -277,3 +346,9 @@ Always: ClosedMeansFullyRecognized
 
 Always: ClosedMeansFullyCollected
   every project in Project has closed[project] = YES => cashReceived[project] = contractAmount[project]
+
+Always: AdvanceRefundRequiresAdvanceCash
+  every project in Project has AdvanceRefunded(project) is in events => AdvanceCashReceived(project) is in events
+
+Always: AcceptanceRejectedBlocksFinalRevenue
+  every project in Project has AcceptanceRejected(project) is in events => not FinalRevenueRecognized(project) is in events

@@ -1,0 +1,3 @@
+$ flowspec-suite --tlc --tlc-narrate examples/capability/progress_billing.fspec
+PASS compile examples/capability/progress_billing.fspec -> ProgressBilling.tla
+PASS TLC ProgressBilling

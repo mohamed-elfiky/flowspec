@@ -787,6 +787,14 @@ Run TLC inside Docker:
 flowspec-suite --tlc --tlc-image flowspec-tlc:local
 ```
 
+Run TLC with a FlowSpec-level counterexample explanation:
+
+```sh
+flowspec-suite --tlc --tlc-narrate --tlc-image flowspec-tlc:local examples/tutorial/deceptive_double_post_bad.fspec
+```
+
+When TLC finds a failing invariant, this mode prints the violated property, the FlowSpec move path, source locations, and a final-state excerpt. Use raw `--tlc-logs` when you need the original TLC trace.
+
 Stream TLC logs while debugging a Docker run:
 
 ```sh

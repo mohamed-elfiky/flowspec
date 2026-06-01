@@ -1,0 +1,39 @@
+$ flowspec-suite --tlc --tlc-narrate examples/tutorial/deceptive_double_post_bad.fspec
+PASS compile examples/tutorial/deceptive_double_post_bad.fspec -> DeceptiveDoublePostBad.tla
+FlowSpec counterexample
+
+Property violated: NoOverdraft [bad state] (examples/tutorial/deceptive_double_post_bad.fspec:35)
+
+Property source:
+  Bad state: Overdraft
+    sourceBalance < 0
+
+Move path:
+  1. WorkerReadsPending (examples/tutorial/deceptive_double_post_bad.fspec:22)
+  2. WorkerPostsFromAttempt (examples/tutorial/deceptive_double_post_bad.fspec:28)
+  3. WorkerPostsFromAttempt (examples/tutorial/deceptive_double_post_bad.fspec:28) repeated
+
+Move source:
+  Move: WorkerReadsPending
+    for some worker in Worker
+    if status = PENDING
+    if sourceBalance >= amount
+    then postingAttempts gains worker
+
+  Move: WorkerPostsFromAttempt
+    for some worker in Worker
+    if worker is in postingAttempts
+    then status becomes POSTED
+    then sourceBalance becomes sourceBalance - amount
+    then destinationBalance becomes destinationBalance + amount
+
+Final state excerpt:
+  destinationBalance = 120
+  sourceBalance = -20
+  status = "POSTED"
+  postingAttempts = {w1}
+  amount = 60
+
+This is generated from TLC's counterexample trace using FlowSpec move metadata.
+
+Run with --tlc-logs without --tlc-narrate to inspect raw TLC output.

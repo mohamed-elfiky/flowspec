@@ -64,16 +64,18 @@ The TLC commands run the `flowspec.suite` Python module.
 When you run `FlowSpec: Run TLC Current File`, the extension executes:
 
 ```text
-python -m flowspec.suite --tlc --tlc-backend <backend> <active-file.fspec>
+python -m flowspec.suite --tlc --tlc-narrate --tlc-backend <backend> <active-file.fspec>
 ```
 
 When you run `FlowSpec: Run TLC Suite`, the extension executes:
 
 ```text
-python -m flowspec.suite --tlc --tlc-backend <backend>
+python -m flowspec.suite --tlc --tlc-narrate --tlc-backend <backend>
 ```
 
 Docker is the default TLC backend. TLC runs inside a container using generated `.tla` and `.cfg` files in a temporary directory. The container is started with no network, a read-only root filesystem, a read-only mounted work directory, and a writable `/tmp`.
+
+Narrated TLC output maps counterexamples back to FlowSpec move names and source locations, so a failed run starts with the DSL-level path before you inspect raw TLC output.
 
 Validation uses:
 

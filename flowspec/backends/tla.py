@@ -34,7 +34,10 @@ def collect_enum_values(spec: Spec) -> set[str]:
     return values
 
 
-def compile_tla(spec: Spec) -> str:
+TRACE_MOVE_VAR = "__flowMove"
+
+
+def compile_tla(spec: Spec, trace: bool = False) -> str:
     ctx = RenderContext(
         enum_values=collect_enum_values(spec),
         state_vars={state_var.name for state_var in spec.state_vars},
@@ -52,8 +55,9 @@ def compile_tla(spec: Spec) -> str:
         lines.append("")
 
     state_names = [state_var.name for state_var in spec.state_vars]
-    if state_names:
-        lines.extend(["VARIABLES " + ", ".join(state_names), "", f"vars == <<{', '.join(state_names)}>>", ""])
+    variable_names = [*state_names, TRACE_MOVE_VAR] if trace else state_names
+    if variable_names:
+        lines.extend(["VARIABLES " + ", ".join(variable_names), "", f"vars == <<{', '.join(variable_names)}>>", ""])
 
     for message in spec.messages:
         lines.extend(render_message(message, ctx))
@@ -62,11 +66,11 @@ def compile_tla(spec: Spec) -> str:
 
     auto_type_ok = not any(prop.name == "TypeOK" for prop in spec.properties)
     if auto_type_ok:
-        lines.extend(render_type_ok(spec, ctx))
-    lines.extend(render_init(spec, ctx, include_type_ok=bool(spec.state_vars)))
+        lines.extend(render_type_ok(spec, ctx, trace=trace, move_names=[move.name for move in spec.moves]))
+    lines.extend(render_init(spec, ctx, include_type_ok=bool(spec.state_vars), trace=trace))
 
     for move in spec.moves:
-        lines.extend(render_move(move, state_names, ctx))
+        lines.extend(render_move(move, variable_names, ctx, trace=trace))
 
     lines.extend(render_next(spec))
     lines.extend(render_spec(spec))
@@ -115,8 +119,8 @@ def render_messages_set(spec: Spec, ctx: RenderContext) -> list[str]:
     return ["Messages ==", "  " + " \\cup ".join(pieces), ""]
 
 
-def render_type_ok(spec: Spec, ctx: RenderContext) -> list[str]:
-    if not spec.state_vars:
+def render_type_ok(spec: Spec, ctx: RenderContext, trace: bool = False, move_names: list[str] | None = None) -> list[str]:
+    if not spec.state_vars and not trace:
         return []
     lines = ["TypeOK =="]
     for state_var in spec.state_vars:
@@ -124,28 +128,132 @@ def render_type_ok(spec: Spec, ctx: RenderContext) -> list[str]:
         if state_var.domain:
             type_expr = f"[{state_var.domain} -> {type_expr}]"
         lines.append(f"  /\\ {state_var.name} \\in {type_expr}")
+    if trace:
+        values = ["Init", *(move_names or [])]
+        lines.append(f"  /\\ {TRACE_MOVE_VAR} \\in {{{', '.join(quote(value) for value in values)}}}")
     lines.append("")
     return lines
 
 
-def render_init(spec: Spec, ctx: RenderContext, include_type_ok: bool) -> list[str]:
+def render_init(spec: Spec, ctx: RenderContext, include_type_ok: bool, trace: bool = False) -> list[str]:
     lines = ["Init =="]
     facts = spec.initial_facts or []
+    early_facts = []
+    regular_facts = []
+    for fact in facts:
+        rendered = render_early_init_fact(fact, ctx)
+        if rendered:
+            early_facts.append(rendered)
+        else:
+            regular_facts.append(render_expr(fact, ctx))
+    for fact in early_facts:
+        lines.append(f"  /\\ {fact}")
+    if trace:
+        lines.append(f"  /\\ {TRACE_MOVE_VAR} = {quote('Init')}")
     if include_type_ok:
         lines.append("  /\\ TypeOK")
-    for fact in facts:
-        lines.append(f"  /\\ {render_expr(fact, ctx)}")
+    for fact in regular_facts:
+        lines.append(f"  /\\ {fact}")
     if not spec.state_vars and not facts:
         lines.append("  /\\ TRUE")
     lines.append("")
     return lines
 
 
-def render_move(move: Move, state_vars: list[str], ctx: RenderContext) -> list[str]:
+def render_early_init_fact(fact: Tree, ctx: RenderContext) -> str | None:
+    forall_expr = unwrap_single_tree(fact)
+    if forall_expr.data == "forall_expr":
+        return render_initial_function_assignment(forall_expr, ctx)
+
+    comparison = unwrap_single_tree(fact)
+    if comparison.data != "comparison":
+        return None
+    parts = [child for child in comparison.children if isinstance(child, Tree)]
+    if len(parts) != 3 or parts[1].data != "comp_op" or render_comp_op(parts[1]) != "=":
+        return None
+    lhs = name_ref_from_wrapped_expr(parts[0])
+    if lhs is None or tree_children(lhs, "index_suffix"):
+        return None
+    return render_expr(fact, ctx)
+
+
+def render_initial_function_assignment(forall_expr: Tree, ctx: RenderContext) -> str | None:
+    bindings = tree_children(forall_expr, "binding")
+    if len(bindings) != 1:
+        return None
+    binding = bindings[0]
+    binding_names = child_tokens(binding, "NAME")
+    if not binding_names:
+        return None
+    bound_name = str(binding_names[0])
+    domain_expr = first_tree(binding, "expr")
+
+    body_exprs = [child for child in forall_expr.children if isinstance(child, Tree) and child.data == "expr"]
+    if not body_exprs:
+        return None
+    body = unwrap_single_tree(body_exprs[-1])
+    if body.data != "comparison":
+        return None
+
+    parts = [child for child in body.children if isinstance(child, Tree)]
+    if len(parts) != 3 or parts[1].data != "comp_op" or render_comp_op(parts[1]) != "=":
+        return None
+
+    lhs = name_ref_from_wrapped_expr(parts[0])
+    if lhs is None:
+        return None
+    suffixes = tree_children(lhs, "index_suffix")
+    if len(suffixes) != 1:
+        return None
+    index_exprs = tree_children(suffixes[0], "expr")
+    if len(index_exprs) != 1:
+        return None
+    try:
+        index_name = simple_name_expr(index_exprs[0])
+    except ValueError:
+        return None
+    if index_name != bound_name:
+        return None
+
+    base = str(child_tokens(lhs, "NAME")[0])
+    return f"{base} = [{bound_name} \\in {render_expr(domain_expr, ctx)} |-> {render_expr(parts[2], ctx)}]"
+
+
+def unwrap_single_tree(tree: Tree) -> Tree:
+    node = tree
+    while node.data in {
+        "expr",
+        "implication",
+        "or_expr",
+        "and_expr",
+        "not_expr",
+        "quant_expr",
+        "sum_expr",
+        "product_expr",
+        "atom",
+    }:
+        tree_kids = [child for child in node.children if isinstance(child, Tree)]
+        token_kids = [child for child in node.children if isinstance(child, Token)]
+        if token_kids or len(tree_kids) != 1:
+            break
+        node = tree_kids[0]
+    return node
+
+
+def name_ref_from_wrapped_expr(tree: Tree) -> Tree | None:
+    node = unwrap_single_tree(tree)
+    return node if node.data == "name_ref" else None
+
+
+def render_move(move: Move, state_vars: list[str], ctx: RenderContext, trace: bool = False) -> list[str]:
     body = [render_expr(expr, ctx) for expr in move.guards]
     body.extend(render_effects(move.effects, ctx))
+    if trace:
+        body.append(f"{TRACE_MOVE_VAR}' = {quote(move.name)}")
 
     changed = {base_lvalue_name(lvalue) for lvalue, operator, _ in move.effects if operator != "STAYS"}
+    if trace:
+        changed.add(TRACE_MOVE_VAR)
     unchanged = [name for name in state_vars if name not in changed]
     if unchanged:
         body.append(f"UNCHANGED <<{', '.join(unchanged)}>>")
@@ -549,4 +657,3 @@ def render_token(token: Token, ctx: RenderContext) -> str:
 
 def quote(value: str) -> str:
     return '"' + value + '"'
-

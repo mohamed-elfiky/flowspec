@@ -7,6 +7,7 @@ import tempfile
 from pathlib import Path
 
 from flowspec.backends.tla import compile_tla
+from flowspec.narrator import narrate_tlc_failure
 from flowspec.parser import build_parser, parse_spec
 
 
@@ -22,14 +23,18 @@ DEFAULT_TLC_IMAGE = os.environ.get("FLOWSPEC_TLC_IMAGE", "ghcr.io/mohamed-elfiky
 DEFAULT_TLC_JAR = os.environ.get("FLOWSPEC_TLC_JAR")
 
 
-def compile_example(source_path: Path) -> str:
+def load_spec(source_path: Path):
     parser = build_parser()
     tree = parser.parse(source_path.read_text())
-    return compile_tla(parse_spec(tree))
+    return parse_spec(tree)
 
 
-def write_tla(source_path: Path, output_dir: Path) -> Path:
-    tla = compile_example(source_path)
+def compile_example(source_path: Path, trace: bool = False) -> str:
+    return compile_tla(load_spec(source_path), trace=trace)
+
+
+def write_tla(source_path: Path, output_dir: Path, trace: bool = False) -> Path:
+    tla = compile_example(source_path, trace=trace)
     module_name = module_name_from_tla(tla)
     output_path = output_dir / f"{module_name}.tla"
     output_path.write_text(tla)
@@ -41,7 +46,13 @@ def module_name_from_tla(tla: str) -> str:
     return first_line.removeprefix("---- MODULE ").removesuffix(" ----")
 
 
-def run_tlc(tla_path: Path, source_path: Path, tlc_jar: Path, show_logs: bool = False) -> None:
+def run_tlc(
+    tla_path: Path,
+    source_path: Path,
+    tlc_jar: Path,
+    show_logs: bool = False,
+    narrate: bool = False,
+) -> None:
     cfg_path = copy_cfg_for(tla_path, source_path)
     if cfg_path is None:
         print(f"SKIP TLC {tla_path.stem}: no examples/{tla_path.stem}.cfg")
@@ -50,15 +61,21 @@ def run_tlc(tla_path: Path, source_path: Path, tlc_jar: Path, show_logs: bool = 
     result = run_tlc_process(
         ["java", "-jar", str(tlc_jar), "-deadlock", "-config", str(cfg_path), str(tla_path)],
         cwd=tla_path.parent,
-        show_logs=show_logs,
+        show_logs=show_logs and not narrate,
     )
     if result.returncode != 0:
-        print_captured_output(result)
+        print_tlc_failure(result, source_path, narrate)
         raise SystemExit(result.returncode)
     print(f"PASS TLC {tla_path.stem}")
 
 
-def run_tlc_in_docker(tla_path: Path, source_path: Path, image: str, show_logs: bool = False) -> None:
+def run_tlc_in_docker(
+    tla_path: Path,
+    source_path: Path,
+    image: str,
+    show_logs: bool = False,
+    narrate: bool = False,
+) -> None:
     cfg_path = copy_cfg_for(tla_path, source_path)
     if cfg_path is None:
         print(f"SKIP TLC {tla_path.stem}: no matching .cfg")
@@ -99,10 +116,10 @@ def run_tlc_in_docker(tla_path: Path, source_path: Path, image: str, show_logs: 
             f"/input/{cfg_path.name}",
             f"/input/{tla_path.name}",
         ],
-        show_logs=show_logs,
+        show_logs=show_logs and not narrate,
     )
     if result.returncode != 0:
-        print_captured_output(result)
+        print_tlc_failure(result, source_path, narrate)
         raise SystemExit(result.returncode)
     print(f"PASS TLC {tla_path.stem}")
 
@@ -118,6 +135,17 @@ def print_captured_output(result: subprocess.CompletedProcess[str]) -> None:
         print(result.stdout)
     if result.stderr:
         print(result.stderr, file=sys.stderr)
+
+
+def print_tlc_failure(result: subprocess.CompletedProcess[str], source_path: Path, narrate: bool) -> None:
+    output = "\n".join(part for part in [result.stdout, result.stderr] if part)
+    if narrate:
+        narration = narrate_tlc_failure(output, load_spec(source_path), source_path)
+        if narration:
+            print(narration)
+            print("\nRun with --tlc-logs without --tlc-narrate to inspect raw TLC output.")
+            return
+    print_captured_output(result)
 
 
 def ensure_docker_image(image: str) -> None:
@@ -180,6 +208,11 @@ def parse_args() -> argparse.Namespace:
         help="Stream TLC stdout/stderr live instead of only printing output when TLC fails.",
     )
     parser.add_argument(
+        "--tlc-narrate",
+        action="store_true",
+        help="On TLC failure, print a FlowSpec move-path explanation instead of raw TLC output.",
+    )
+    parser.add_argument(
         "-o",
         "--output-dir",
         type=Path,
@@ -206,16 +239,22 @@ def main() -> None:
         output_dir = Path(output_path)
         for source_path in sources:
             source_path = source_path.resolve()
-            tla_path = write_tla(source_path, output_dir)
+            tla_path = write_tla(source_path, output_dir, trace=args.tlc_narrate)
             display_path = source_path.relative_to(PROJECT_ROOT) if source_path.is_relative_to(PROJECT_ROOT) else source_path
             print(f"PASS compile {display_path} -> {tla_path.name}")
             if args.output_dir:
                 print(f"WROTE TLA {tla_path}")
             if args.tlc:
                 if args.tlc_backend == "docker":
-                    run_tlc_in_docker(tla_path, source_path, args.tlc_image, show_logs=args.tlc_logs)
+                    run_tlc_in_docker(
+                        tla_path,
+                        source_path,
+                        args.tlc_image,
+                        show_logs=args.tlc_logs,
+                        narrate=args.tlc_narrate,
+                    )
                 else:
-                    run_tlc(tla_path, source_path, args.tlc_jar, show_logs=args.tlc_logs)
+                    run_tlc(tla_path, source_path, args.tlc_jar, show_logs=args.tlc_logs, narrate=args.tlc_narrate)
 
 
 if __name__ == "__main__":

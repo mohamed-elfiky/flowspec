@@ -93,7 +93,7 @@ def parse_message(item: Tree) -> MessageDef:
 
 def parse_move(section: Tree) -> Move:
     move_name = str(child_tokens(section, "NAME")[0])
-    move = Move(name=move_name)
+    move = Move(name=move_name, line=section.meta.line, column=section.meta.column)
 
     for line in tree_children(section, "move_line"):
         if not line.children or not isinstance(line.children[0], Tree):
@@ -124,7 +124,7 @@ def parse_property(section: Tree) -> Property:
         "always_section": "always",
         "eventually_section": "eventually",
     }[section.data]
-    return Property(kind=kind, name=name, exprs=exprs)
+    return Property(kind=kind, name=name, exprs=exprs, line=section.meta.line, column=section.meta.column)
 
 
 def parse_fairness(item: Tree) -> Fairness:

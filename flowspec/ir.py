@@ -13,6 +13,8 @@ class StateVar:
 @dataclass
 class Move:
     name: str
+    line: int | None = None
+    column: int | None = None
     quantifiers: list[Tree] = field(default_factory=list)
     guards: list[Tree] = field(default_factory=list)
     effects: list[tuple[Tree, str, Tree]] = field(default_factory=list)
@@ -37,6 +39,8 @@ class Property:
     kind: str
     name: str
     exprs: list[Tree]
+    line: int | None = None
+    column: int | None = None
 
 
 @dataclass
@@ -64,4 +68,3 @@ class SemanticDiagnostic:
     severity: str
     line: int
     column: int
-

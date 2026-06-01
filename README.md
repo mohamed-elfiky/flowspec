@@ -98,6 +98,12 @@ Run TLC inside Docker:
 flowspec-suite --tlc
 ```
 
+Run TLC with a FlowSpec-level counterexample explanation when a property fails:
+
+```sh
+flowspec-suite --tlc --tlc-narrate examples/tutorial/deceptive_double_post_bad.fspec
+```
+
 Stream TLC logs while debugging a Docker or host JVM run. Add `-o generated-tla` when you also want to inspect the generated `.tla` and copied `.cfg` files:
 
 ```sh

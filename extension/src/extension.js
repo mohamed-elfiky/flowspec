@@ -119,12 +119,12 @@ async function runTlcCurrent(context) {
       return;
     }
   }
-  const args = ['--tlc', ...tlcBackendArgs(), document.fileName];
+  const args = ['--tlc', '--tlc-narrate', ...tlcBackendArgs(), document.fileName];
   await runSuiteCommand(context, args);
 }
 
 async function runSuite(context, withTlc) {
-  const args = withTlc ? ['--tlc', ...tlcBackendArgs()] : [];
+  const args = withTlc ? ['--tlc', '--tlc-narrate', ...tlcBackendArgs()] : [];
   await runSuiteCommand(context, args);
 }
 
