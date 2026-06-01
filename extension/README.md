@@ -100,3 +100,20 @@ Use host Java only when explicitly needed:
   "flowspec.tlcJar": "/path/to/tla2tools.jar"
 }
 ```
+
+## Package A VSIX
+
+Package locally:
+
+```sh
+mkdir -p dist
+npx --yes @vscode/vsce package --out dist/flowspec-vscode-0.0.1.vsix
+```
+
+The repository workflow `Build VS Code Extension` packages the extension on GitHub Actions and uploads the `.vsix` as an artifact. This is for manual installation only; it does not publish to the VS Code Marketplace.
+
+Install a downloaded VSIX:
+
+```sh
+code --install-extension flowspec-vscode-0.0.1.vsix
+```

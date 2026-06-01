@@ -135,5 +135,11 @@
         }
       ]
     }
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mohamed-elfiky/flowspec.git",
+    "directory": "extension"
   }
 }

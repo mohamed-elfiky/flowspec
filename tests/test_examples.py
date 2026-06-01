@@ -20,6 +20,10 @@ TUTORIAL_EXAMPLES = [
     PROJECT_ROOT / "examples" / "tutorial" / "deceptive_double_post_fixed.fspec",
 ]
 
+CAPABILITY_EXAMPLES = [
+    PROJECT_ROOT / "examples" / "capability" / "progress_billing.fspec",
+]
+
 
 class ExampleIntegrationTests(unittest.TestCase):
     @classmethod
@@ -51,6 +55,16 @@ class ExampleIntegrationTests(unittest.TestCase):
                 self.assertIn("---- MODULE DeceptiveDoublePost", tla)
                 self.assertIn("NoOverdraft ==", tla)
                 self.assertIn("NoDoublePosted ==", tla)
+
+    def test_capability_examples_compile_and_validate(self):
+        for source_path in CAPABILITY_EXAMPLES:
+            with self.subTest(example=source_path.name):
+                tla = self.compile_example(source_path)
+                self.assertIn("---- MODULE ProgressBilling ----", tla)
+                self.assertIn("projectStatus \\in [Project ->", tla)
+                self.assertIn("NoRevenueExceedsContract ==", tla)
+                self.assertIn("ClosedMeansFullyCollected ==", tla)
+                self.assertIn("FinalRevenueWithoutAcceptance ==", tla)
 
     def test_payment_generates_business_invariants(self):
         tla = self.compile_example(PROJECT_ROOT / "examples" / "payment.fspec")

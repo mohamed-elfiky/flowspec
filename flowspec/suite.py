@@ -1,4 +1,5 @@
 import argparse
+from contextlib import nullcontext
 import os
 import subprocess
 import sys
@@ -40,33 +41,30 @@ def module_name_from_tla(tla: str) -> str:
     return first_line.removeprefix("---- MODULE ").removesuffix(" ----")
 
 
-def run_tlc(tla_path: Path, source_path: Path, tlc_jar: Path) -> None:
+def run_tlc(tla_path: Path, source_path: Path, tlc_jar: Path, show_logs: bool = False) -> None:
     cfg_path = copy_cfg_for(tla_path, source_path)
     if cfg_path is None:
         print(f"SKIP TLC {tla_path.stem}: no examples/{tla_path.stem}.cfg")
         return
 
-    result = subprocess.run(
+    result = run_tlc_process(
         ["java", "-jar", str(tlc_jar), "-deadlock", "-config", str(cfg_path), str(tla_path)],
         cwd=tla_path.parent,
-        text=True,
-        capture_output=True,
-        check=False,
+        show_logs=show_logs,
     )
     if result.returncode != 0:
-        print(result.stdout)
-        print(result.stderr, file=sys.stderr)
+        print_captured_output(result)
         raise SystemExit(result.returncode)
     print(f"PASS TLC {tla_path.stem}")
 
 
-def run_tlc_in_docker(tla_path: Path, source_path: Path, image: str) -> None:
+def run_tlc_in_docker(tla_path: Path, source_path: Path, image: str, show_logs: bool = False) -> None:
     cfg_path = copy_cfg_for(tla_path, source_path)
     if cfg_path is None:
         print(f"SKIP TLC {tla_path.stem}: no matching .cfg")
         return
 
-    result = subprocess.run(
+    result = run_tlc_process(
         [
             "docker",
             "run",
@@ -87,10 +85,10 @@ def run_tlc_in_docker(tla_path: Path, source_path: Path, image: str) -> None:
             "-w",
             "/tmp",
             image,
-            "-u",
-            "JAVA_TOOL_OPTIONS",
-            "-u",
-            "LD_PRELOAD",
+            "-i",
+            "PATH=/opt/java/openjdk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            "HOME=/tmp",
+            "LANG=C.UTF-8",
             "java",
             "-jar",
             "/opt/tla2tools.jar",
@@ -101,15 +99,25 @@ def run_tlc_in_docker(tla_path: Path, source_path: Path, image: str) -> None:
             f"/input/{cfg_path.name}",
             f"/input/{tla_path.name}",
         ],
-        text=True,
-        capture_output=True,
-        check=False,
+        show_logs=show_logs,
     )
     if result.returncode != 0:
-        print(result.stdout)
-        print(result.stderr, file=sys.stderr)
+        print_captured_output(result)
         raise SystemExit(result.returncode)
     print(f"PASS TLC {tla_path.stem}")
+
+
+def run_tlc_process(command: list[str], cwd: Path | None = None, show_logs: bool = False) -> subprocess.CompletedProcess[str]:
+    if show_logs:
+        return subprocess.run(command, cwd=cwd, text=True, check=False)
+    return subprocess.run(command, cwd=cwd, text=True, capture_output=True, check=False)
+
+
+def print_captured_output(result: subprocess.CompletedProcess[str]) -> None:
+    if result.stdout:
+        print(result.stdout)
+    if result.stderr:
+        print(result.stderr, file=sys.stderr)
 
 
 def ensure_docker_image(image: str) -> None:
@@ -166,6 +174,17 @@ def parse_args() -> argparse.Namespace:
         default=Path(DEFAULT_TLC_JAR) if DEFAULT_TLC_JAR else None,
         help="Path to tla2tools.jar for --tlc-backend host. Can also be set with FLOWSPEC_TLC_JAR.",
     )
+    parser.add_argument(
+        "--tlc-logs",
+        action="store_true",
+        help="Stream TLC stdout/stderr live instead of only printing output when TLC fails.",
+    )
+    parser.add_argument(
+        "-o",
+        "--output-dir",
+        type=Path,
+        help="Write generated .tla and copied .cfg files to this directory instead of a temporary directory.",
+    )
     return parser.parse_args()
 
 
@@ -177,18 +196,26 @@ def main() -> None:
         ensure_docker_image(args.tlc_image)
 
     sources = args.sources or SUPPORTED_EXAMPLES
-    with tempfile.TemporaryDirectory(prefix="flowspec-suite-") as temp_dir:
-        output_dir = Path(temp_dir)
+    if args.output_dir:
+        args.output_dir.mkdir(parents=True, exist_ok=True)
+        output_context = nullcontext(str(args.output_dir))
+    else:
+        output_context = tempfile.TemporaryDirectory(prefix="flowspec-suite-")
+
+    with output_context as output_path:
+        output_dir = Path(output_path)
         for source_path in sources:
             source_path = source_path.resolve()
             tla_path = write_tla(source_path, output_dir)
             display_path = source_path.relative_to(PROJECT_ROOT) if source_path.is_relative_to(PROJECT_ROOT) else source_path
             print(f"PASS compile {display_path} -> {tla_path.name}")
+            if args.output_dir:
+                print(f"WROTE TLA {tla_path}")
             if args.tlc:
                 if args.tlc_backend == "docker":
-                    run_tlc_in_docker(tla_path, source_path, args.tlc_image)
+                    run_tlc_in_docker(tla_path, source_path, args.tlc_image, show_logs=args.tlc_logs)
                 else:
-                    run_tlc(tla_path, source_path, args.tlc_jar)
+                    run_tlc(tla_path, source_path, args.tlc_jar, show_logs=args.tlc_logs)
 
 
 if __name__ == "__main__":

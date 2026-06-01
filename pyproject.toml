@@ -27,6 +27,7 @@ classifiers = [
 [project.scripts]
 flowspec = "flowspec.cli:main"
 flowspec-suite = "flowspec.suite:main"
+flowspec-benchmark = "flowspec.benchmark:main"
 
 [tool.setuptools]
 packages = ["flowspec", "flowspec.backends"]

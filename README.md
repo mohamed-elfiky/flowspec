@@ -63,10 +63,24 @@ Print the parse tree:
 flowspec --tree examples/account.fspec
 ```
 
+Write generated TLA+ files from a suite run:
+
+```sh
+flowspec-suite -o generated-tla examples/payment.fspec
+```
+
 Run the supported suite:
 
 ```sh
 flowspec-suite
+```
+
+Run the larger capability benchmark:
+
+```sh
+flowspec-benchmark
+flowspec-benchmark --tlc --tlc-image flowspec-tlc:local
+flowspec-benchmark --tlc --tlc-logs --tlc-image flowspec-tlc:local
 ```
 
 Build the isolated TLC image:
@@ -82,6 +96,13 @@ Run TLC inside Docker:
 
 ```sh
 flowspec-suite --tlc
+```
+
+Stream TLC logs while debugging a Docker or host JVM run. Add `-o generated-tla` when you also want to inspect the generated `.tla` and copied `.cfg` files:
+
+```sh
+flowspec-suite --tlc --tlc-logs -o generated-tla examples/payment.fspec
+flowspec-suite --tlc --tlc-backend host --tlc-jar /path/to/tla2tools.jar --tlc-logs -o generated-tla examples/payment.fspec
 ```
 
 For releases, publish the committed Dockerfile through GitHub Actions to a registry image such as:
@@ -120,18 +141,16 @@ Check the extension:
 npm run check --prefix extension
 ```
 
-Package the extension as a VSIX:
+Package the extension as a VSIX locally:
 
 ```sh
-npm install --prefix extension
-npm install --prefix extension --save-dev @vscode/vsce
-npx --prefix extension vsce package
+(cd extension && mkdir -p dist && npx --yes @vscode/vsce package --out dist/flowspec-vscode-0.0.1.vsix)
 ```
 
-Install the generated VSIX locally:
+The GitHub Actions workflow `Build VS Code Extension` also packages the extension and uploads the `.vsix` as a workflow artifact. Run it manually from the Actions tab, then download the artifact and install it locally:
 
 ```sh
-code --install-extension extension/flowspec-vscode-0.0.1.vsix
+code --install-extension flowspec-vscode-0.0.1.vsix
 ```
 
 See [docs/user-guide.md](docs/user-guide.md) for the DSL guide, [docs/product-direction.md](docs/product-direction.md) for the v0 product boundary, and [docs/ai-authoring-guide.md](docs/ai-authoring-guide.md) for AI-assisted spec writing.

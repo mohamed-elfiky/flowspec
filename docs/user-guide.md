@@ -764,6 +764,14 @@ Compile all supported examples:
 flowspec-suite
 ```
 
+Compile one spec through the suite and keep the generated TLA+ file:
+
+```sh
+flowspec-suite -o generated-tla examples/payment.fspec
+```
+
+The output directory contains the generated `.tla` file. If TLC is run and a matching `.cfg` exists, the suite also copies the `.cfg` file there. This is the easiest way to inspect exactly what TLC checked.
+
 Build the isolated TLC image:
 
 ```sh
@@ -776,13 +784,60 @@ docker build \
 Run TLC inside Docker:
 
 ```sh
-flowspec-suite --tlc
+flowspec-suite --tlc --tlc-image flowspec-tlc:local
+```
+
+Stream TLC logs while debugging a Docker run:
+
+```sh
+flowspec-suite --tlc --tlc-logs --tlc-image flowspec-tlc:local -o generated-tla examples/payment.fspec
+```
+
+Run TLC on the host JVM only when needed:
+
+```sh
+flowspec-suite --tlc --tlc-backend host --tlc-jar /path/to/tla2tools.jar --tlc-logs -o generated-tla examples/payment.fspec
 ```
 
 Released versions can use a published image instead of a local build:
 
 ```sh
 FLOWSPEC_TLC_IMAGE=ghcr.io/mohamed-elfiky/flowspec-tlc:0.0.1 flowspec-suite --tlc
+```
+
+### What The `.cfg` File Does
+
+TLC uses a `.cfg` file to know how to run the generated TLA+ model. The `.fspec` describes the workflow, the generated `.tla` contains the formal model, and the `.cfg` supplies the model-checking scenario.
+
+A config can say:
+
+```tla
+SPECIFICATION Spec
+
+CONSTANTS
+  Project = {project1}
+
+INVARIANT TypeOK
+INVARIANT NoRevenueExceedsContract
+```
+
+That means:
+
+```text
+run the generated Spec behavior
+check it with one project
+make sure TypeOK always holds
+make sure RevenueExceedsContract is never reachable
+```
+
+If you add `Given` constants, rename bad states, or add new `Always` properties, update the matching `.cfg` file so TLC checks the intended model.
+
+Run the larger capability benchmark:
+
+```sh
+flowspec-benchmark
+flowspec-benchmark --tlc --tlc-image flowspec-tlc:local
+flowspec-benchmark --tlc --tlc-logs --tlc-image flowspec-tlc:local
 ```
 
 ## Realistic Example Fixtures

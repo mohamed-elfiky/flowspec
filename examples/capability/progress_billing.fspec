@@ -1,0 +1,279 @@
+Machine: ProgressBilling
+
+Given:
+  Project
+
+State:
+  projectStatus per Project is one of:
+    CONTRACTED
+    ADVANCE_INVOICED
+    ADVANCE_RECEIVED
+    PROGRESS_40_ASSESSED
+    REVENUE_40_RECOGNIZED
+    PROGRESS_75_ASSESSED
+    REVENUE_75_RECOGNIZED
+    MIDPOINT_INVOICED
+    ACCEPTED
+    FINAL_REVENUE_RECOGNIZED
+    MIDPOINT_CLEARED
+    FINAL_INVOICED
+    FINAL_CLEARED
+    CLOSED
+  contractAmount per Project is one of {800}
+  recognizedRevenue per Project is one of {0, 320, 600, 800}
+  billedAmount per Project is one of {0, 200, 240, 360, 440, 560, 600, 800}
+  cashReceived per Project is one of {0, 200, 240, 560, 600, 800}
+  accountsReceivable per Project is one of {0, 80, 200, 360, 560}
+  advanceLiability per Project is one of {0, 240}
+  closed per Project is one of:
+    YES
+    NO
+  events is a set of Messages
+
+Messages:
+  ContractSigned message has:
+    type = ContractSigned
+    project in Project
+
+  AdvanceInvoiceIssued message has:
+    type = AdvanceInvoiceIssued
+    project in Project
+
+  AdvanceCashReceived message has:
+    type = AdvanceCashReceived
+    project in Project
+
+  AdvanceCleared message has:
+    type = AdvanceCleared
+    project in Project
+
+  ProgressAssessed40 message has:
+    type = ProgressAssessed40
+    project in Project
+
+  RevenueRecognized40 message has:
+    type = RevenueRecognized40
+    project in Project
+
+  ProgressAssessed75 message has:
+    type = ProgressAssessed75
+    project in Project
+
+  RevenueRecognized75 message has:
+    type = RevenueRecognized75
+    project in Project
+
+  MidpointInvoiceIssued message has:
+    type = MidpointInvoiceIssued
+    project in Project
+
+  AcceptanceRecorded message has:
+    type = AcceptanceRecorded
+    project in Project
+
+  FinalRevenueRecognized message has:
+    type = FinalRevenueRecognized
+    project in Project
+
+  MidpointCashCleared message has:
+    type = MidpointCashCleared
+    project in Project
+
+  FinalInvoiceIssued message has:
+    type = FinalInvoiceIssued
+    project in Project
+
+  FinalCashCleared message has:
+    type = FinalCashCleared
+    project in Project
+
+  PeriodClosed message has:
+    type = PeriodClosed
+    project in Project
+
+Initially:
+  every project in Project has projectStatus[project] = CONTRACTED
+  every project in Project has contractAmount[project] = 800
+  every project in Project has recognizedRevenue[project] = 0
+  every project in Project has billedAmount[project] = 0
+  every project in Project has cashReceived[project] = 0
+  every project in Project has accountsReceivable[project] = 0
+  every project in Project has advanceLiability[project] = 0
+  every project in Project has closed[project] = NO
+  events = {}
+
+Move: IssueAdvanceInvoice
+  for some project in Project
+  if projectStatus[project] = CONTRACTED
+  if closed[project] = NO
+  then projectStatus[project] becomes ADVANCE_INVOICED
+  then billedAmount[project] becomes 240
+  then events gains AdvanceInvoiceIssued(project)
+
+Move: ReceiveAdvanceCash
+  for some project in Project
+  if projectStatus[project] = ADVANCE_INVOICED
+  if closed[project] = NO
+  then projectStatus[project] becomes ADVANCE_RECEIVED
+  then cashReceived[project] becomes 240
+  then events gains AdvanceCashReceived(project)
+
+Move: ClearAdvanceAsLiability
+  for some project in Project
+  if projectStatus[project] = ADVANCE_RECEIVED
+  if closed[project] = NO
+  then advanceLiability[project] becomes 240
+  then events gains AdvanceCleared(project)
+
+Move: AssessProgress40
+  for some project in Project
+  if projectStatus[project] = ADVANCE_RECEIVED
+  if AdvanceCleared(project) is in events
+  if closed[project] = NO
+  then projectStatus[project] becomes PROGRESS_40_ASSESSED
+  then events gains ProgressAssessed40(project)
+
+Move: RecognizeRevenue40
+  for some project in Project
+  if projectStatus[project] = PROGRESS_40_ASSESSED
+  if closed[project] = NO
+  then projectStatus[project] becomes REVENUE_40_RECOGNIZED
+  then recognizedRevenue[project] becomes 320
+  then accountsReceivable[project] becomes 80
+  then advanceLiability[project] becomes 0
+  then events gains RevenueRecognized40(project)
+
+Move: AssessProgress75
+  for some project in Project
+  if projectStatus[project] = REVENUE_40_RECOGNIZED
+  if closed[project] = NO
+  then projectStatus[project] becomes PROGRESS_75_ASSESSED
+  then events gains ProgressAssessed75(project)
+
+Move: RecognizeRevenue75
+  for some project in Project
+  if projectStatus[project] = PROGRESS_75_ASSESSED
+  if closed[project] = NO
+  then projectStatus[project] becomes REVENUE_75_RECOGNIZED
+  then recognizedRevenue[project] becomes 600
+  then accountsReceivable[project] becomes 360
+  then events gains RevenueRecognized75(project)
+
+Move: IssueMidpointInvoice
+  for some project in Project
+  if projectStatus[project] = REVENUE_75_RECOGNIZED
+  if accountsReceivable[project] = 360
+  if closed[project] = NO
+  then projectStatus[project] becomes MIDPOINT_INVOICED
+  then billedAmount[project] becomes 600
+  then events gains MidpointInvoiceIssued(project)
+
+Move: RecordAcceptance
+  for some project in Project
+  if projectStatus[project] = MIDPOINT_INVOICED
+  if closed[project] = NO
+  then projectStatus[project] becomes ACCEPTED
+  then events gains AcceptanceRecorded(project)
+
+Move: RecognizeFinalRevenue
+  for some project in Project
+  if projectStatus[project] = ACCEPTED
+  if closed[project] = NO
+  then projectStatus[project] becomes FINAL_REVENUE_RECOGNIZED
+  then recognizedRevenue[project] becomes 800
+  then accountsReceivable[project] becomes 560
+  then events gains FinalRevenueRecognized(project)
+
+Move: ClearMidpointCash
+  for some project in Project
+  if projectStatus[project] = FINAL_REVENUE_RECOGNIZED
+  if accountsReceivable[project] = 560
+  if closed[project] = NO
+  then projectStatus[project] becomes MIDPOINT_CLEARED
+  then cashReceived[project] becomes 600
+  then accountsReceivable[project] becomes 200
+  then events gains MidpointCashCleared(project)
+
+Move: IssueFinalInvoice
+  for some project in Project
+  if projectStatus[project] = MIDPOINT_CLEARED
+  if accountsReceivable[project] = 200
+  if closed[project] = NO
+  then projectStatus[project] becomes FINAL_INVOICED
+  then billedAmount[project] becomes 800
+  then events gains FinalInvoiceIssued(project)
+
+Move: ClearFinalCash
+  for some project in Project
+  if projectStatus[project] = FINAL_INVOICED
+  if accountsReceivable[project] = 200
+  if closed[project] = NO
+  then projectStatus[project] becomes FINAL_CLEARED
+  then cashReceived[project] becomes 800
+  then accountsReceivable[project] becomes 0
+  then events gains FinalCashCleared(project)
+
+Move: ClosePeriod
+  for some project in Project
+  if projectStatus[project] = FINAL_CLEARED
+  if recognizedRevenue[project] = contractAmount[project]
+  if accountsReceivable[project] = 0
+  if advanceLiability[project] = 0
+  if closed[project] = NO
+  then projectStatus[project] becomes CLOSED
+  then closed[project] becomes YES
+  then events gains PeriodClosed(project)
+
+Bad state: RevenueExceedsContract
+  some project in Project has recognizedRevenue[project] > contractAmount[project]
+
+Bad state: BilledExceedsContract
+  some project in Project has billedAmount[project] > contractAmount[project]
+
+Bad state: CashExceedsContract
+  some project in Project has cashReceived[project] > contractAmount[project]
+
+Bad state: NegativeReceivable
+  some project in Project has accountsReceivable[project] < 0
+
+Bad state: NegativeAdvanceLiability
+  some project in Project has advanceLiability[project] < 0
+
+Bad state: AdvanceInvoiceCreatedRevenue
+  some project in Project has projectStatus[project] = ADVANCE_INVOICED and recognizedRevenue[project] > 0
+
+Bad state: AdvanceCashCreatedRevenue
+  some project in Project has projectStatus[project] = ADVANCE_RECEIVED and recognizedRevenue[project] > 0
+
+Bad state: MidpointInvoiceDoubleCountsRevenue
+  some project in Project has projectStatus[project] = MIDPOINT_INVOICED and recognizedRevenue[project] > 600
+
+Bad state: FinalInvoiceCreatesRevenue
+  some project in Project has projectStatus[project] = FINAL_INVOICED and recognizedRevenue[project] > contractAmount[project]
+
+Bad state: ClosedWithOpenReceivable
+  some project in Project has closed[project] = YES and accountsReceivable[project] > 0
+
+Bad state: ClosedWithAdvanceLiability
+  some project in Project has closed[project] = YES and advanceLiability[project] > 0
+
+Bad state: FinalRevenueWithoutAcceptance
+  some project in Project has FinalRevenueRecognized(project) is in events and not AcceptanceRecorded(project) is in events
+
+Bad state: MidpointClearedWithoutInvoice
+  some project in Project has MidpointCashCleared(project) is in events and not MidpointInvoiceIssued(project) is in events
+
+Bad state: FinalClearedWithoutInvoice
+  some project in Project has FinalCashCleared(project) is in events and not FinalInvoiceIssued(project) is in events
+
+Always: RevenueRecognized40RequiresAssessment
+  every project in Project has RevenueRecognized40(project) is in events => ProgressAssessed40(project) is in events
+
+Always: RevenueRecognized75RequiresAssessment
+  every project in Project has RevenueRecognized75(project) is in events => ProgressAssessed75(project) is in events
+
+Always: ClosedMeansFullyRecognized
+  every project in Project has closed[project] = YES => recognizedRevenue[project] = contractAmount[project]
+
+Always: ClosedMeansFullyCollected
+  every project in Project has closed[project] = YES => cashReceived[project] = contractAmount[project]

@@ -1,0 +1,50 @@
+name: Build VS Code Extension
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+    paths:
+      - "extension/**"
+      - ".github/workflows/build-vscode-extension.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Check extension JavaScript
+        run: npm run check --prefix extension
+
+      - name: Read extension version
+        id: version
+        working-directory: extension
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Package VSIX
+        working-directory: extension
+        run: |
+          mkdir -p dist
+          npx --yes @vscode/vsce package --out "dist/flowspec-vscode-${{ steps.version.outputs.version }}.vsix"
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: flowspec-vscode-${{ steps.version.outputs.version }}
+          path: extension/dist/*.vsix
+          if-no-files-found: error
