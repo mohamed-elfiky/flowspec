@@ -106,6 +106,8 @@ flowspec-suite --tlc --tlc-narrate examples/tutorial/deceptive_double_post_bad.f
 
 Narrated TLC output keeps the formal checker in the loop, but translates the failure back into the workflow language. A failed run shows the violated property, the FlowSpec move path, the domain bindings for each move, per-step state changes, and the relevant source locations before you inspect raw TLC output.
 
+The VS Code command `FlowSpec: Run TLC Current File` uses the same narrated output and marks the violated property in the Problems panel. Counterexample moves are attached as related locations on that TLC diagnostic, so the ordered path stays tied to the failed property instead of becoming a flat list of unrelated messages.
+
 Stream TLC logs while debugging a Docker or host JVM run. Add `-o generated-tla` when you also want to inspect the generated `.tla` and copied `.cfg` files:
 
 ```sh

@@ -923,6 +923,7 @@ generated TLA+ preview
 parse tree preview
 run TLC current file
 run suite
+TLC failure diagnostics with related source locations
 ```
 
 User workflow:

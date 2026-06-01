@@ -5,19 +5,21 @@ const path = require('path');
 const vscode = require('vscode');
 
 let diagnostics;
+let tlcDiagnostics;
 let output;
 let statusItem;
 const validationTimers = new Map();
 
 function activate(context) {
   diagnostics = vscode.languages.createDiagnosticCollection('flowspec');
+  tlcDiagnostics = vscode.languages.createDiagnosticCollection('flowspec-tlc');
   output = vscode.window.createOutputChannel('FlowSpec');
   statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
   statusItem.text = '$(symbol-event) FlowSpec';
   statusItem.tooltip = 'FlowSpec extension is active. Click to preview generated TLA+.';
   statusItem.command = 'flowspec.previewTla';
 
-  context.subscriptions.push(diagnostics, output, statusItem);
+  context.subscriptions.push(diagnostics, tlcDiagnostics, output, statusItem);
   context.subscriptions.push(vscode.commands.registerCommand('flowspec.validateCurrent', () => validateCurrent(context, true)));
   context.subscriptions.push(vscode.commands.registerCommand('flowspec.compileCurrent', () => compileCurrent(context)));
   context.subscriptions.push(vscode.commands.registerCommand('flowspec.previewTla', () => previewTla(context)));
@@ -36,6 +38,9 @@ function activate(context) {
   context.subscriptions.push(vscode.workspace.onDidSaveTextDocument((document) => validateDocument(context, document)));
   context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(() => updateStatusItem()));
   context.subscriptions.push(vscode.workspace.onDidChangeTextDocument((event) => {
+    if (isFlowSpecDocument(event.document)) {
+      tlcDiagnostics.delete(event.document.uri);
+    }
     if (!configValue('validateOnChange', true)) {
       return;
     }
@@ -120,7 +125,7 @@ async function runTlcCurrent(context) {
     }
   }
   const args = ['--tlc', '--tlc-narrate', ...tlcBackendArgs(), document.fileName];
-  await runSuiteCommand(context, args);
+  await runSuiteCommand(context, args, document);
 }
 
 async function runSuite(context, withTlc) {
@@ -128,10 +133,13 @@ async function runSuite(context, withTlc) {
   await runSuiteCommand(context, args);
 }
 
-async function runSuiteCommand(context, args) {
-  const root = findProjectRoot(context, vscode.window.activeTextEditor?.document);
+async function runSuiteCommand(context, args, diagnosticDocument) {
+  const root = findProjectRoot(context, diagnosticDocument || vscode.window.activeTextEditor?.document);
   const module = 'flowspec.suite';
   try {
+    if (diagnosticDocument && args.includes('--tlc')) {
+      tlcDiagnostics.delete(diagnosticDocument.uri);
+    }
     output.clear();
     output.show(true);
     output.appendLine(`$ ${pythonPath(root)} -m ${module} ${args.join(" ")}`);
@@ -143,8 +151,15 @@ async function runSuiteCommand(context, args) {
       output.append(result.stderr);
     }
     const ranTlc = args.includes('--tlc');
+    if (diagnosticDocument && ranTlc) {
+      tlcDiagnostics.delete(diagnosticDocument.uri);
+      await validateDocument(context, diagnosticDocument);
+    }
     vscode.window.showInformationMessage(ranTlc ? 'FlowSpec TLC run finished.' : 'FlowSpec compile suite finished.');
   } catch (error) {
+    if (diagnosticDocument && args.includes('--tlc-narrate')) {
+      setTlcDiagnostics(diagnosticDocument, `${error.stdout || ''}\n${error.stderr || ''}`, root);
+    }
     showToolError(error);
   }
 }
@@ -471,6 +486,72 @@ function diagnosticsFromJson(stdout) {
       : vscode.DiagnosticSeverity.Error;
     return new vscode.Diagnostic(range, item.message || 'FlowSpec diagnostic', severity);
   });
+}
+
+function setTlcDiagnostics(document, text, root) {
+  const nextDiagnostics = diagnosticsFromNarratedTlc(document, text, root);
+  if (nextDiagnostics.length > 0) {
+    tlcDiagnostics.set(document.uri, nextDiagnostics);
+  }
+}
+
+function diagnosticsFromNarratedTlc(document, text, root) {
+  const property = narratedPropertyDiagnostic(document, text, root);
+  const moves = narratedMoveRelatedInformation(document, text, root);
+  if (property) {
+    property.relatedInformation = moves;
+    return [property];
+  }
+
+  return [];
+}
+
+function narratedPropertyDiagnostic(document, text, root) {
+  const match = text.match(/^Property violated:\s+(.+?)\s+\(([^()\n]+\.fspec):(\d+)\)$/m);
+  if (!match || !locationMatchesDocument(match[2], document, root)) {
+    return undefined;
+  }
+
+  const diagnostic = new vscode.Diagnostic(
+    lineRange(document, Number(match[3])),
+    `TLC violated property: ${match[1]}`,
+    vscode.DiagnosticSeverity.Error,
+  );
+  diagnostic.source = 'FlowSpec TLC';
+  diagnostic.code = 'tlc-property-violation';
+  return diagnostic;
+}
+
+function narratedMoveRelatedInformation(document, text, root) {
+  const result = [];
+  const moveRe = /^\s+(\d+)\.\s+(.+?)\s+\(([^()\n]+\.fspec):(\d+)\)(?: repeated)?$/gm;
+  let match;
+  while ((match = moveRe.exec(text)) !== null) {
+    if (!locationMatchesDocument(match[3], document, root)) {
+      continue;
+    }
+    result.push(new vscode.DiagnosticRelatedInformation(
+      new vscode.Location(document.uri, lineRange(document, Number(match[4]))),
+      `TLC counterexample step ${match[1]}: ${match[2]}`,
+    ));
+  }
+  return result;
+}
+
+function locationMatchesDocument(locationPath, document, root) {
+  const resolved = path.isAbsolute(locationPath)
+    ? path.normalize(locationPath)
+    : path.normalize(path.join(root, locationPath));
+  return path.normalize(document.fileName) === resolved;
+}
+
+function lineRange(document, oneBasedLine) {
+  const line = Math.max(0, Math.min((Number(oneBasedLine) || 1) - 1, document.lineCount - 1));
+  const textLine = document.lineAt(line);
+  if (!textLine.range.isEmpty) {
+    return textLine.range;
+  }
+  return new vscode.Range(line, 0, line, 1);
 }
 
 function shortErrorMessage(text) {

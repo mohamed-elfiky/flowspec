@@ -565,6 +565,10 @@ the source location for the relevant move or property
 
 The raw TLC trace is still available with `--tlc-logs`, but the narrated trace is the normal first stop when deciding whether the business design is wrong.
 
+In VS Code, `FlowSpec: Run TLC Current File` also converts narrated source locations into editor diagnostics. The violated property is marked as an error, and the moves in the counterexample path are attached as related locations on that error so the developer can jump from the Problems panel to the relevant `.fspec` lines without losing the ordered story.
+
+TLC diagnostics are cleared as soon as the document changes. The checker is manual and can be expensive, so FlowSpec avoids showing stale model-checking results after the spec has been edited.
+
 ### Safety Properties
 
 Safety means "something bad never happens."

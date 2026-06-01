@@ -77,6 +77,8 @@ Docker is the default TLC backend. TLC runs inside a container using generated `
 
 Narrated TLC output maps counterexamples back to FlowSpec move names, domain bindings, state changes, and source locations. A failed run starts with the workflow-level story before you inspect raw TLC output.
 
+For `FlowSpec: Run TLC Current File`, the extension also turns narrated source locations into VS Code diagnostics. The violated property is shown as an error, and the moves in the counterexample path are attached as related locations on that error. TLC diagnostics are cleared when the file changes so stale model-checking results do not remain after an edit.
+
 Validation uses:
 
 ```text
