@@ -147,7 +147,12 @@ Package the extension as a VSIX locally:
 (cd extension && mkdir -p dist && npx --yes @vscode/vsce package --out dist/flowspec-vscode-0.0.1.vsix)
 ```
 
-The GitHub Actions workflow `Build VS Code Extension` also packages the extension and uploads the `.vsix` as a workflow artifact. Run it manually from the Actions tab, then download the artifact and install it locally:
+The GitHub Actions workflow `Build VS Code Extension` packages the extension in two ways:
+
+- every run uploads the `.vsix` as a workflow artifact
+- tag pushes such as `v0.0.1` also attach the `.vsix` to the GitHub Release
+
+Install a downloaded VSIX locally:
 
 ```sh
 code --install-extension flowspec-vscode-0.0.1.vsix

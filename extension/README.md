@@ -110,7 +110,7 @@ mkdir -p dist
 npx --yes @vscode/vsce package --out dist/flowspec-vscode-0.0.1.vsix
 ```
 
-The repository workflow `Build VS Code Extension` packages the extension on GitHub Actions and uploads the `.vsix` as an artifact. This is for manual installation only; it does not publish to the VS Code Marketplace.
+The repository workflow `Build VS Code Extension` packages the extension on GitHub Actions. Every run uploads the `.vsix` as an artifact. Tag pushes such as `v0.0.1` also attach the `.vsix` to the GitHub Release. This is for manual installation only; it does not publish to the VS Code Marketplace.
 
 Install a downloaded VSIX:
 

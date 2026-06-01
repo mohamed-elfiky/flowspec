@@ -12,7 +12,7 @@ on:
       - ".github/workflows/build-vscode-extension.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   package:
@@ -48,3 +48,18 @@ jobs:
           name: flowspec-vscode-${{ steps.version.outputs.version }}
           path: extension/dist/*.vsix
           if-no-files-found: error
+
+      - name: Publish VSIX to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: extension/dist/*.vsix
+          generate_release_notes: true
+          body: |
+            FlowSpec VS Code extension VSIX for manual installation.
+
+            Install after downloading:
+
+            ```sh
+            code --install-extension flowspec-vscode-${{ steps.version.outputs.version }}.vsix
+            ```
