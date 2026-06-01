@@ -551,7 +551,19 @@ Bad state: Overdraft
   sourceBalance < 0
 ```
 
-When TLC finds a violation, it gives a path of moves that reaches the bad state. That path is often more useful than a normal unit test because it shows a design-level failure, not just a function-level failure.
+When TLC finds a violation, FlowSpec can narrate the path of moves that reaches the bad state. That path is often more useful than a normal unit test because it shows a design-level failure, not just a function-level failure.
+
+With `--tlc-narrate`, the output is meant to be read by an application developer first, not a TLA+ expert. It shows:
+
+```text
+the violated property
+the FlowSpec move path
+the domain binding for each move, such as worker=w1 or project=project1
+the state fields that changed at each step
+the source location for the relevant move or property
+```
+
+The raw TLC trace is still available with `--tlc-logs`, but the narrated trace is the normal first stop when deciding whether the business design is wrong.
 
 ### Safety Properties
 
@@ -793,7 +805,7 @@ Run TLC with a FlowSpec-level counterexample explanation:
 flowspec-suite --tlc --tlc-narrate --tlc-image flowspec-tlc:local examples/tutorial/deceptive_double_post_bad.fspec
 ```
 
-When TLC finds a failing invariant, this mode prints the violated property, the FlowSpec move path, source locations, and a final-state excerpt. Use raw `--tlc-logs` when you need the original TLC trace.
+When TLC finds a failing invariant, this mode prints the violated property, the FlowSpec move path, source locations, domain bindings, per-step state changes, and a final-state excerpt. Use raw `--tlc-logs` when you need the original TLC trace.
 
 Stream TLC logs while debugging a Docker run:
 

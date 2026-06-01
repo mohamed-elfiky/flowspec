@@ -15,7 +15,7 @@ Readable spec document
         -> parse
         -> generate TLA+
         -> run TLC, when a model config is provided
-        -> find bad states and broken assumptions
+        -> explain bad states and broken assumptions in FlowSpec terms
 ```
 
 ## Supported V0 Shape
@@ -103,6 +103,8 @@ Run TLC with a FlowSpec-level counterexample explanation when a property fails:
 ```sh
 flowspec-suite --tlc --tlc-narrate examples/tutorial/deceptive_double_post_bad.fspec
 ```
+
+Narrated TLC output keeps the formal checker in the loop, but translates the failure back into the workflow language. A failed run shows the violated property, the FlowSpec move path, the domain bindings for each move, per-step state changes, and the relevant source locations before you inspect raw TLC output.
 
 Stream TLC logs while debugging a Docker or host JVM run. Add `-o generated-tla` when you also want to inspect the generated `.tla` and copied `.cfg` files:
 

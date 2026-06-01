@@ -1,7 +1,7 @@
 import re
 from pathlib import Path
 
-from flowspec.backends.tla import TRACE_MOVE_VAR
+from flowspec.backends.tla import TRACE_BINDING_PREFIX, TRACE_MOVE_VAR, TRACE_NONE
 from flowspec.ir import Property, Spec
 
 
@@ -14,8 +14,9 @@ STATE_VALUE_RE = re.compile(r"^\s*/\\\s+([A-Za-z_][A-Za-z0-9_]*)\s*=", re.MULTIL
 def narrate_tlc_failure(output: str, spec: Spec, source_path: Path) -> str | None:
     violated = violated_property(output)
     states = trace_states(output)
-    moves = trace_moves(states)
-    if not violated and not moves:
+    steps = trace_steps(states)
+    moves = [step["move"] for step in steps]
+    if not violated and not steps:
         return None
 
     lines = ["FlowSpec counterexample", ""]
@@ -32,17 +33,30 @@ def narrate_tlc_failure(output: str, spec: Spec, source_path: Path) -> str | Non
             lines.extend(["", "Property source:"])
             lines.extend(indent_block(block))
 
-    if moves:
+    if steps:
         lines.extend(["", "Move path:"])
         move_locations = {move.name: move for move in spec.moves}
         counts: dict[str, int] = {}
-        for index, move_name in enumerate(moves, 1):
+        for index, step in enumerate(steps, 1):
+            move_name = step["move"]
             counts[move_name] = counts.get(move_name, 0) + 1
             move = move_locations.get(move_name)
             location = source_location(source_path, move.line if move else None)
             suffix = f" ({location})" if location else ""
             repeated = " repeated" if counts[move_name] > 1 else ""
-            lines.append(f"  {index}. {move_name}{suffix}{repeated}")
+            bindings = format_bindings(step["bindings"])
+            lines.append(f"  {index}. {move_name}{bindings}{suffix}{repeated}")
+
+        lines.extend(["", "Step changes:"])
+        for index, step in enumerate(steps, 1):
+            bindings = format_bindings(step["bindings"])
+            lines.append(f"  {index}. {step['move']}{bindings}")
+            changes = step["changes"]
+            if changes:
+                for name, before, after in changes[:8]:
+                    lines.append(f"     {name}: {before} -> {after}")
+            else:
+                lines.append("     no visible state value changed")
 
         seen_blocks = set()
         lines.extend(["", "Move source:"])
@@ -85,15 +99,25 @@ def trace_states(output: str) -> list[str]:
 
 
 def trace_moves(states: list[str]) -> list[str]:
-    moves = []
-    for state in states:
-        match = MOVE_RE.search(state)
-        if not match:
+    return [step["move"] for step in trace_steps(states)]
+
+
+def trace_steps(states: list[str]) -> list[dict[str, object]]:
+    steps = []
+    parsed_states = [state_values(state) for state in states]
+    for index, values in enumerate(parsed_states):
+        move = unquote(values.get(TRACE_MOVE_VAR, ""))
+        if not move or move == "Init":
             continue
-        move = match.group(1)
-        if move != "Init":
-            moves.append(move)
-    return moves
+        previous = parsed_states[index - 1] if index > 0 else {}
+        steps.append(
+            {
+                "move": move,
+                "bindings": binding_values(values),
+                "changes": state_changes(previous, values),
+            }
+        )
+    return steps
 
 
 def final_state_values(state: str) -> list[str]:
@@ -102,11 +126,54 @@ def final_state_values(state: str) -> list[str]:
         stripped = line.strip()
         if not stripped.startswith("/\\"):
             continue
-        if f"/\\ {TRACE_MOVE_VAR} =" in stripped:
+        if f"/\\ {TRACE_MOVE_VAR} =" in stripped or f"/\\ {TRACE_BINDING_PREFIX}" in stripped:
             continue
         if STATE_VALUE_RE.match(stripped):
             values.append(stripped.removeprefix("/\\").strip())
     return values
+
+
+def state_values(state: str) -> dict[str, str]:
+    values = {}
+    for line in state.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("/\\") or " = " not in stripped:
+            continue
+        assignment = stripped.removeprefix("/\\").strip()
+        name, value = assignment.split(" = ", 1)
+        values[name.strip()] = value.strip()
+    return values
+
+
+def binding_values(values: dict[str, str]) -> dict[str, str]:
+    bindings = {}
+    for name, value in values.items():
+        if not name.startswith(TRACE_BINDING_PREFIX):
+            continue
+        value = unquote(value)
+        if value == TRACE_NONE:
+            continue
+        bindings[name.removeprefix(TRACE_BINDING_PREFIX)] = value
+    return bindings
+
+
+def state_changes(before: dict[str, str], after: dict[str, str]) -> list[tuple[str, str, str]]:
+    changes = []
+    ignored = {TRACE_MOVE_VAR}
+    for name in sorted(after):
+        if name in ignored or name.startswith(TRACE_BINDING_PREFIX):
+            continue
+        before_value = before.get(name, "<unset>")
+        after_value = after[name]
+        if before_value != after_value:
+            changes.append((name, before_value, after_value))
+    return changes
+
+
+def format_bindings(bindings: dict[str, str]) -> str:
+    if not bindings:
+        return ""
+    return "(" + ", ".join(f"{name}={value}" for name, value in sorted(bindings.items())) + ")"
 
 
 def describe_property(name: str, spec: Spec, source_path: Path) -> str:
@@ -176,3 +243,13 @@ def is_top_level_block_header(line: str) -> bool:
 
 def indent_block(block: list[str]) -> list[str]:
     return [f"  {line}" for line in block]
+
+
+def quote(value: str) -> str:
+    return f'"{value}"'
+
+
+def unquote(value: str) -> str:
+    if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
+        return value[1:-1]
+    return value

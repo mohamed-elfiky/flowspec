@@ -226,6 +226,20 @@ Move: RejectAcceptance
   then projectStatus[project] becomes ACCEPTANCE_REJECTED
   then events gains AcceptanceRejected(project)
 
+Move: ResolveRejectedAcceptance
+  for some project in Project
+  if projectStatus[project] = ACCEPTANCE_REJECTED
+  if AcceptanceRejected(project) is in events
+  if closed[project] = NO
+  then projectStatus[project] becomes CANCELLED
+  then recognizedRevenue[project] becomes 0
+  then billedAmount[project] becomes 0
+  then cashReceived[project] becomes 0
+  then accountsReceivable[project] becomes 0
+  then advanceLiability[project] becomes 0
+  then events gains AdvanceRefunded(project)
+  then events gains ProjectCancelled(project)
+
 Move: RecognizeFinalRevenue
   for some project in Project
   if projectStatus[project] = ACCEPTED
@@ -335,6 +349,12 @@ Bad state: FinalRevenueAfterAcceptanceRejected
 Bad state: ClosedAfterAcceptanceRejected
   some project in Project has AcceptanceRejected(project) is in events and closed[project] = YES
 
+Bad state: RejectedWithoutOpenReceivable
+  some project in Project has projectStatus[project] = ACCEPTANCE_REJECTED and accountsReceivable[project] = 0
+
+Bad state: RejectedWithoutRecognizedProgress
+  some project in Project has projectStatus[project] = ACCEPTANCE_REJECTED and recognizedRevenue[project] = 0
+
 Always: RevenueRecognized40RequiresAssessment
   every project in Project has RevenueRecognized40(project) is in events => ProgressAssessed40(project) is in events
 
@@ -352,3 +372,6 @@ Always: AdvanceRefundRequiresAdvanceCash
 
 Always: AcceptanceRejectedBlocksFinalRevenue
   every project in Project has AcceptanceRejected(project) is in events => not FinalRevenueRecognized(project) is in events
+
+Always: ResolvedRejectionIsCancelled
+  every project in Project has ProjectCancelled(project) is in events => projectStatus[project] = CANCELLED

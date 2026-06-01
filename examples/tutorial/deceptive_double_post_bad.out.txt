@@ -2,16 +2,32 @@ $ flowspec-suite --tlc --tlc-narrate examples/tutorial/deceptive_double_post_bad
 PASS compile examples/tutorial/deceptive_double_post_bad.fspec -> DeceptiveDoublePostBad.tla
 FlowSpec counterexample
 
-Property violated: NoOverdraft [bad state] (examples/tutorial/deceptive_double_post_bad.fspec:35)
+Property violated: NoOverdraft [bad state] (examples/tutorial/deceptive_double_post_bad.fspec:39)
 
 Property source:
   Bad state: Overdraft
     sourceBalance < 0
 
 Move path:
-  1. WorkerReadsPending (examples/tutorial/deceptive_double_post_bad.fspec:22)
-  2. WorkerPostsFromAttempt (examples/tutorial/deceptive_double_post_bad.fspec:28)
-  3. WorkerPostsFromAttempt (examples/tutorial/deceptive_double_post_bad.fspec:28) repeated
+  1. WorkerReadsPending(worker=w1) (examples/tutorial/deceptive_double_post_bad.fspec:24)
+  2. WorkerReadsPending(worker=w2) (examples/tutorial/deceptive_double_post_bad.fspec:24) repeated
+  3. WorkerPostsFromAttempt(worker=w1) (examples/tutorial/deceptive_double_post_bad.fspec:30)
+  4. WorkerPostsFromAttempt(worker=w2) (examples/tutorial/deceptive_double_post_bad.fspec:30) repeated
+
+Step changes:
+  1. WorkerReadsPending(worker=w1)
+     postingAttempts: {} -> {w1}
+  2. WorkerReadsPending(worker=w2)
+     postingAttempts: {w1} -> {w1, w2}
+  3. WorkerPostsFromAttempt(worker=w1)
+     destinationBalance: 0 -> 60
+     postedWorkers: {} -> {w1}
+     sourceBalance: 100 -> 40
+     status: "PENDING" -> "POSTED"
+  4. WorkerPostsFromAttempt(worker=w2)
+     destinationBalance: 60 -> 120
+     postedWorkers: {w1} -> {w1, w2}
+     sourceBalance: 40 -> -20
 
 Move source:
   Move: WorkerReadsPending
@@ -23,15 +39,18 @@ Move source:
   Move: WorkerPostsFromAttempt
     for some worker in Worker
     if worker is in postingAttempts
+    if not worker is in postedWorkers
     then status becomes POSTED
     then sourceBalance becomes sourceBalance - amount
     then destinationBalance becomes destinationBalance + amount
+    then postedWorkers gains worker
 
 Final state excerpt:
   destinationBalance = 120
   sourceBalance = -20
+  postedWorkers = {w1, w2}
   status = "POSTED"
-  postingAttempts = {w1}
+  postingAttempts = {w1, w2}
   amount = 60
 
 This is generated from TLC's counterexample trace using FlowSpec move metadata.

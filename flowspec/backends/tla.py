@@ -35,6 +35,8 @@ def collect_enum_values(spec: Spec) -> set[str]:
 
 
 TRACE_MOVE_VAR = "__flowMove"
+TRACE_BINDING_PREFIX = "__flowBinding_"
+TRACE_NONE = "__none"
 
 
 def compile_tla(spec: Spec, trace: bool = False) -> str:
@@ -55,7 +57,9 @@ def compile_tla(spec: Spec, trace: bool = False) -> str:
         lines.append("")
 
     state_names = [state_var.name for state_var in spec.state_vars]
-    variable_names = [*state_names, TRACE_MOVE_VAR] if trace else state_names
+    trace_bindings = collect_trace_bindings(spec, ctx) if trace else {}
+    trace_binding_vars = [trace_binding_var(name) for name in trace_bindings]
+    variable_names = [*state_names, TRACE_MOVE_VAR, *trace_binding_vars] if trace else state_names
     if variable_names:
         lines.extend(["VARIABLES " + ", ".join(variable_names), "", f"vars == <<{', '.join(variable_names)}>>", ""])
 
@@ -66,11 +70,19 @@ def compile_tla(spec: Spec, trace: bool = False) -> str:
 
     auto_type_ok = not any(prop.name == "TypeOK" for prop in spec.properties)
     if auto_type_ok:
-        lines.extend(render_type_ok(spec, ctx, trace=trace, move_names=[move.name for move in spec.moves]))
-    lines.extend(render_init(spec, ctx, include_type_ok=bool(spec.state_vars), trace=trace))
+        lines.extend(
+            render_type_ok(
+                spec,
+                ctx,
+                trace=trace,
+                move_names=[move.name for move in spec.moves],
+                trace_bindings=trace_bindings,
+            )
+        )
+    lines.extend(render_init(spec, ctx, include_type_ok=bool(spec.state_vars), trace=trace, trace_bindings=trace_bindings))
 
     for move in spec.moves:
-        lines.extend(render_move(move, variable_names, ctx, trace=trace))
+        lines.extend(render_move(move, variable_names, ctx, trace=trace, trace_bindings=trace_bindings))
 
     lines.extend(render_next(spec))
     lines.extend(render_spec(spec))
@@ -80,6 +92,22 @@ def compile_tla(spec: Spec, trace: bool = False) -> str:
 
     lines.append("====")
     return "\n".join(lines) + "\n"
+
+
+def collect_trace_bindings(spec: Spec, ctx: RenderContext) -> dict[str, list[str]]:
+    domains_by_name: dict[str, list[str]] = {}
+    for move in spec.moves:
+        for binding in move.quantifiers:
+            name = str(child_tokens(binding, "NAME")[0])
+            domain = render_expr(first_tree(binding, "expr"), ctx)
+            domains_by_name.setdefault(name, [])
+            if domain not in domains_by_name[name]:
+                domains_by_name[name].append(domain)
+    return dict(sorted(domains_by_name.items()))
+
+
+def trace_binding_var(name: str) -> str:
+    return f"{TRACE_BINDING_PREFIX}{name}"
 
 
 def render_message(message: MessageDef, ctx: RenderContext) -> list[str]:
@@ -119,7 +147,13 @@ def render_messages_set(spec: Spec, ctx: RenderContext) -> list[str]:
     return ["Messages ==", "  " + " \\cup ".join(pieces), ""]
 
 
-def render_type_ok(spec: Spec, ctx: RenderContext, trace: bool = False, move_names: list[str] | None = None) -> list[str]:
+def render_type_ok(
+    spec: Spec,
+    ctx: RenderContext,
+    trace: bool = False,
+    move_names: list[str] | None = None,
+    trace_bindings: dict[str, list[str]] | None = None,
+) -> list[str]:
     if not spec.state_vars and not trace:
         return []
     lines = ["TypeOK =="]
@@ -131,11 +165,20 @@ def render_type_ok(spec: Spec, ctx: RenderContext, trace: bool = False, move_nam
     if trace:
         values = ["Init", *(move_names or [])]
         lines.append(f"  /\\ {TRACE_MOVE_VAR} \\in {{{', '.join(quote(value) for value in values)}}}")
+        for name, domains in (trace_bindings or {}).items():
+            domain_expr = " \\cup ".join([f"{{{quote(TRACE_NONE)}}}", *domains])
+            lines.append(f"  /\\ {trace_binding_var(name)} \\in ({domain_expr})")
     lines.append("")
     return lines
 
 
-def render_init(spec: Spec, ctx: RenderContext, include_type_ok: bool, trace: bool = False) -> list[str]:
+def render_init(
+    spec: Spec,
+    ctx: RenderContext,
+    include_type_ok: bool,
+    trace: bool = False,
+    trace_bindings: dict[str, list[str]] | None = None,
+) -> list[str]:
     lines = ["Init =="]
     facts = spec.initial_facts or []
     early_facts = []
@@ -150,6 +193,8 @@ def render_init(spec: Spec, ctx: RenderContext, include_type_ok: bool, trace: bo
         lines.append(f"  /\\ {fact}")
     if trace:
         lines.append(f"  /\\ {TRACE_MOVE_VAR} = {quote('Init')}")
+        for name in trace_bindings or {}:
+            lines.append(f"  /\\ {trace_binding_var(name)} = {quote(TRACE_NONE)}")
     if include_type_ok:
         lines.append("  /\\ TypeOK")
     for fact in regular_facts:
@@ -245,15 +290,27 @@ def name_ref_from_wrapped_expr(tree: Tree) -> Tree | None:
     return node if node.data == "name_ref" else None
 
 
-def render_move(move: Move, state_vars: list[str], ctx: RenderContext, trace: bool = False) -> list[str]:
+def render_move(
+    move: Move,
+    state_vars: list[str],
+    ctx: RenderContext,
+    trace: bool = False,
+    trace_bindings: dict[str, list[str]] | None = None,
+) -> list[str]:
     body = [render_expr(expr, ctx) for expr in move.guards]
     body.extend(render_effects(move.effects, ctx))
     if trace:
         body.append(f"{TRACE_MOVE_VAR}' = {quote(move.name)}")
+        move_binding_names = {str(child_tokens(binding, "NAME")[0]) for binding in move.quantifiers}
+        for name in trace_bindings or {}:
+            value = name if name in move_binding_names else quote(TRACE_NONE)
+            body.append(f"{trace_binding_var(name)}' = {value}")
 
     changed = {base_lvalue_name(lvalue) for lvalue, operator, _ in move.effects if operator != "STAYS"}
     if trace:
         changed.add(TRACE_MOVE_VAR)
+        for name in trace_bindings or {}:
+            changed.add(trace_binding_var(name))
     unchanged = [name for name in state_vars if name not in changed]
     if unchanged:
         body.append(f"UNCHANGED <<{', '.join(unchanged)}>>")

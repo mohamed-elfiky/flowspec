@@ -830,12 +830,55 @@ The important product idea:
 the user writes FlowSpec
 FlowSpec generates TLA+
 TLC checks the model
+FlowSpec narrates failures in workflow language
 the developer fixes the design before writing application code
 ```
 
 ---
 
-## Slide 32: CLI Workflow
+## Slide 32: What A Failed Check Looks Like
+
+The product should not make normal developers read raw model-checker traces first.
+
+When TLC finds a broken workflow, FlowSpec narrates the failure in domain terms:
+
+```text
+violated property
+FlowSpec move path
+domain binding for each move
+state changes at each step
+source location for the move or property
+```
+
+Example shape:
+
+```text
+Invariant NoOverdraft failed.
+
+Move path:
+  1. WorkerReadsPending(worker=w1)
+  2. WorkerReadsPending(worker=w2)
+  3. WorkerPostsFromAttempt(worker=w1)
+  4. WorkerPostsFromAttempt(worker=w2)
+
+Step changes:
+  3. WorkerPostsFromAttempt(worker=w1)
+     sourceBalance: 100 -> 40
+     destinationBalance: 0 -> 60
+     status: PENDING -> POSTED
+
+  4. WorkerPostsFromAttempt(worker=w2)
+     sourceBalance: 40 -> -20
+     destinationBalance: 60 -> 120
+```
+
+The point is not only that TLC found a bad state.
+
+The point is that the developer can understand the bad state as a workflow story.
+
+---
+
+## Slide 33: CLI Workflow
 
 Generate TLA+:
 
@@ -866,7 +909,7 @@ running larger examples
 
 ---
 
-## Slide 33: VS Code Extension
+## Slide 34: VS Code Extension
 
 The extension is the main user surface.
 
@@ -897,7 +940,7 @@ The Python engine generates TLA+ and runs TLC.
 
 ---
 
-## Slide 34: Dockerized TLC
+## Slide 35: Dockerized TLC
 
 TLC normally requires Java and `tla2tools.jar`.
 
@@ -920,7 +963,7 @@ more workflow checking
 
 ---
 
-## Slide 35: Capability Benchmark
+## Slide 36: Capability Benchmark
 
 Toy examples are useful for learning, but they are not enough.
 
@@ -942,8 +985,11 @@ progress assessment
 revenue recognition
 midpoint invoice
 acceptance
+acceptance rejection
 final invoice
 cash clearing
+advance refund
+cancellation cleanup
 period close
 ```
 
@@ -960,13 +1006,15 @@ accounts receivable
 advance liability
 closed state
 event history
+rejection state
+cancellation state
 ```
 
 That separation is where the business correctness lives.
 
 ---
 
-## Slide 36: What The Billing Example Proves
+## Slide 37: What The Billing Example Proves
 
 The billing benchmark checks a real accounting idea:
 
@@ -983,6 +1031,9 @@ advance liability recorded
 progress assessed
 revenue recognized only after performance
 liability cleared when revenue is earned
+acceptance can be rejected
+rejected acceptance must be resolved
+cancelled work must not keep open revenue, receivable, or liability
 ```
 
 That is a domain rule, not a programming trick.
@@ -991,7 +1042,7 @@ FlowSpec lets that rule become executable and checkable.
 
 ---
 
-## Slide 37: The Strong Properties
+## Slide 38: The Strong Properties
 
 The strongest part of the billing example is the properties.
 
@@ -1004,6 +1055,8 @@ midpoint cash requires midpoint invoice
 final cash requires final invoice
 closed means fully recognized
 closed means fully collected
+rejection blocks final revenue
+cancelled work cannot remain half-accounted
 ```
 
 These are cross-cutting business invariants.
@@ -1012,7 +1065,7 @@ They define what "correct" means across the whole lifecycle.
 
 ---
 
-## Slide 38: What This Benchmark Does Not Claim
+## Slide 39: What This Benchmark Does Not Claim
 
 The billing benchmark is mostly a sequential lifecycle model.
 
@@ -1041,7 +1094,7 @@ This is an important product boundary: FlowSpec can model those cases, but the b
 
 ---
 
-## Slide 39: Why This Matters For AI
+## Slide 40: Why This Matters For AI
 
 AI is good at producing code.
 
@@ -1071,7 +1124,7 @@ tests
 
 ---
 
-## Slide 40: V1 Direction
+## Slide 41: V1 Direction
 
 The v1 direction is code generation.
 
@@ -1107,7 +1160,7 @@ imperative shell
 
 ---
 
-## Slide 41: Functional Core, Imperative Shell
+## Slide 42: Functional Core, Imperative Shell
 
 Generated core:
 
@@ -1134,7 +1187,7 @@ FlowSpec owns the checked workflow rules.
 
 ---
 
-## Slide 42: Why FlowSpec Is Better Than Plain Docs
+## Slide 43: Why FlowSpec Is Better Than Plain Docs
 
 Plain design docs are readable, but they are not executable.
 
@@ -1160,7 +1213,7 @@ plus model checker
 
 ---
 
-## Slide 43: Why FlowSpec Is Not Just Testing
+## Slide 44: Why FlowSpec Is Not Just Testing
 
 Tests usually check examples you remembered to write.
 
@@ -1183,7 +1236,7 @@ That is a different level of confidence.
 
 ---
 
-## Slide 44: Current Status
+## Slide 45: Current Status
 
 FlowSpec currently has:
 
@@ -1213,7 +1266,7 @@ eventual code generation
 
 ---
 
-## Slide 45: Try It
+## Slide 46: Try It
 
 Repository:
 
@@ -1241,7 +1294,7 @@ GitHub Releases -> Assets -> flowspec-vscode-*.vsix
 
 ---
 
-## Slide 46: What Feedback We Need
+## Slide 47: What Feedback We Need
 
 The useful feedback is practical:
 
@@ -1261,7 +1314,7 @@ The goal is to help normal engineers design better systems before AI or humans w
 
 ---
 
-## Slide 47: Closing
+## Slide 48: Closing
 
 The future of AI coding should not be:
 
