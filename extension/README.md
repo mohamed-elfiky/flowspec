@@ -16,15 +16,38 @@ This extension provides editor support for `.fspec` files.
 - Command: `FlowSpec: Run TLC Current File`
 - Command: `FlowSpec: Run TLC Suite`
 
+## Normal User Setup
+
+The extension provides the editor UI. The FlowSpec Python package is the language engine.
+
+For a normal folder such as:
+
+```text
+TEST-TLA/
+  test.fspec
+  test.cfg
+```
+
+the extension should automatically recognize `.fspec` files and use the active workspace as the working directory. If `python3` cannot import FlowSpec, configure only the Python executable:
+
+```json
+{
+  "flowspec.pythonPath": "/path/to/.venv/bin/python"
+}
+```
+
+Use `flowspec.projectRoot` only when you intentionally want commands to run from a different directory.
+
 ## Development
 
 Open the `extension/` folder in VS Code and start an Extension Development Host.
 
-For this repository layout, the extension auto-detects the FlowSpec project root as the parent directory. If you install or move the extension elsewhere, set:
+For this repository layout, the extension auto-detects the FlowSpec source tree as the parent directory. If needed, set:
 
 ```json
 {
-  "flowspec.projectRoot": "/path/to/flowspec"
+  "flowspec.projectRoot": "/path/to/flowspec",
+  "flowspec.pythonPath": "/path/to/flowspec/.venv/bin/python"
 }
 ```
 

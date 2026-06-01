@@ -127,6 +127,16 @@ FLOWSPEC_TLC_JAR=/path/to/tla2tools.jar flowspec-suite --tlc --tlc-backend host
 
 The local extension lives in [extension/](extension/). It adds `.fspec` highlighting, parser diagnostics, generated TLA+ preview, parse-tree preview, and commands to run the compile/TLC suite.
 
+For installed users, `.fspec` highlighting is automatic. If VS Code cannot find the FlowSpec Python engine, configure the Python executable:
+
+```json
+{
+  "flowspec.pythonPath": "/path/to/.venv/bin/python"
+}
+```
+
+`flowspec.projectRoot` is optional. Use it only when commands should run from a directory other than the active workspace.
+
 Launch it for development:
 
 ```sh

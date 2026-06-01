@@ -156,6 +156,13 @@ async function validateDocument(context, document, showSuccess = false) {
   try {
     const result = await runParseTool(context, document, ['--diagnostics-json'], { allowFailure: true });
     const semanticDiagnostics = diagnosticsFromJson(result.stdout);
+    if (result.code !== 0 && semanticDiagnostics.length === 0) {
+      diagnostics.set(document.uri, [diagnosticFromToolResult(result)]);
+      if (showSuccess) {
+        vscode.window.showErrorMessage('FlowSpec validation found parser errors.');
+      }
+      return;
+    }
     diagnostics.set(document.uri, semanticDiagnostics);
     if (result.code !== 0 && semanticDiagnostics.some((diagnostic) => diagnostic.severity === vscode.DiagnosticSeverity.Error)) {
       if (showSuccess) {
@@ -368,10 +375,20 @@ function findProjectRoot(context, document) {
   candidates.push(path.resolve(context.extensionPath, '..'));
 
   const root = candidates.find((candidate) => fs.existsSync(path.join(candidate, 'flowspec', 'compiler.py')));
-  if (!root) {
-    throw new Error('Could not find FlowSpec project root. Set flowspec.projectRoot in VS Code settings.');
+  if (root) {
+    return root;
   }
-  return root;
+
+  if (document && document.uri.scheme === 'file') {
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+    return workspaceFolder ? workspaceFolder.uri.fsPath : path.dirname(document.fileName);
+  }
+
+  if (vscode.workspace.workspaceFolders?.length) {
+    return vscode.workspace.workspaceFolders[0].uri.fsPath;
+  }
+
+  throw new Error('Could not choose a FlowSpec working directory. Open a folder or set flowspec.projectRoot in VS Code settings.');
 }
 
 function parents(start) {
@@ -422,6 +439,15 @@ function configValue(key, fallback) {
 
 function diagnosticFromError(error) {
   const text = `${error.stderr || ''}\n${error.stdout || ''}`;
+  const match = text.match(/line\s+(\d+),\s+column\s+(\d+)/i);
+  const line = match ? Math.max(Number(match[1]) - 1, 0) : 0;
+  const character = match ? Math.max(Number(match[2]) - 1, 0) : 0;
+  const range = new vscode.Range(line, character, line, character + 1);
+  return new vscode.Diagnostic(range, shortErrorMessage(text), vscode.DiagnosticSeverity.Error);
+}
+
+function diagnosticFromToolResult(result) {
+  const text = `${result.stderr || ''}\n${result.stdout || ''}`;
   const match = text.match(/line\s+(\d+),\s+column\s+(\d+)/i);
   const line = match ? Math.max(Number(match[1]) - 1, 0) : 0;
   const character = match ? Math.max(Number(match[2]) - 1, 0) : 0;
